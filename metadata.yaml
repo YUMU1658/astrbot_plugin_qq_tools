@@ -1,0 +1,5 @@
+name: astrbot_plugin_qq_tools
+version: 0.1.0-alpha.1
+author: YUMU1658
+desc: 为 AstrBot 提供 QQ 平台特定的工具，包括引用回复、撤回消息、网页浏览等功能。支持查询 BOT 自己发送的消息 ID。
+url: https://example.com
