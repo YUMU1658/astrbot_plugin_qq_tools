@@ -10,12 +10,18 @@ Browser Core Module - 浏览器核心管理模块
 """
 
 import asyncio
+import os
 import time
 from typing import Optional, Tuple, Dict, Any, List
 
 from astrbot.api import logger
 
 from .url_validator import URLValidator, validate_browser_url
+
+# JavaScript 标记脚本文件路径
+_MARK_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'mark_script.js')
+# 脚本模板缓存（避免重复读取文件）
+_mark_script_template_cache: Optional[str] = None
 
 # Playwright 导入会在实际使用时进行
 try:
@@ -300,372 +306,46 @@ class BrowserManager:
     def _get_mark_script(self, start_id: int) -> str:
         """获取元素标记的 JavaScript 脚本
         
+        从外部文件 mark_script.js 加载脚本模板，并替换模板变量。
+        使用模块级缓存避免重复读取文件。
+        
         Args:
             start_id: 起始 ID
             
-        优化版标记脚本，使用语义优先 + 打分 + NMS去重 + Top-N截断：
+        Returns:
+            str: 替换变量后的 JavaScript 脚本
+            
+        脚本特性：
         - 语义优先：优先收集强交互元素（button, a, input 等）
         - 打分机制：根据元素类型、语义信息给予不同分数
         - NMS去重：基于 IoU 重叠抑制，避免父子元素重复标记
         - Top-N截断：限制最大标记数量，避免"满屏数字"
         """
-        return f"""
-        () => {{
-            const startId = {start_id};
-            const maxMarks = {self.max_marks};
-            const minArea = {self.min_element_area};
-            const iouThreshold = {self.nms_iou_threshold};
-            const markMode = '{self.mark_mode}';
-            
-            // 清理旧标记 (仅清理当前 Frame 的标记)
-            document.querySelectorAll('.ai-mark').forEach(e => e.remove());
-            
-            // 清理旧的元素标识，避免重复 data-ai-id 导致点击错位/点错
-            document.querySelectorAll('[data-ai-id]').forEach(el => {{
-                el.removeAttribute('data-ai-id');
-                el.removeAttribute('data-ai-inputable');
-                el.removeAttribute('data-ai-canvas');
-            }});
-
-            // ========== 1. 收集候选元素（语义优先）==========
-            const candidateSet = new Set();
-            
-            // 强交互元素选择器（最高优先级）
-            const strongSelectors = [
-                'a[href]',
-                'button:not([disabled])',
-                'input:not([type="hidden"]):not([disabled])',
-                'textarea:not([disabled])',
-                'select:not([disabled])',
-                '[role="button"]',
-                '[role="link"]',
-                '[role="textbox"]',
-                '[role="checkbox"]',
-                '[role="radio"]',
-                '[role="switch"]',
-                '[role="menuitem"]',
-                '[role="tab"]',
-                '[role="option"]',
-                '[role="slider"]',
-                '[role="spinbutton"]',
-                '[role="combobox"]',
-                '[contenteditable="true"]'
-            ];
-            
-            // 事件驱动元素选择器
-            const eventSelectors = [
-                '[onclick]',
-                '[onmousedown]',
-                '[onmouseup]',
-                '[tabindex]:not([tabindex="-1"])'
-            ];
-            
-            // 特殊元素选择器
-            const specialSelectors = ['canvas', 'svg', 'video', 'audio', 'img'];
-            
-            // 收集强交互元素
-            strongSelectors.forEach(sel => {{
-                try {{
-                    document.querySelectorAll(sel).forEach(el => candidateSet.add(el));
-                }} catch(e) {{}}
-            }});
-            
-            // 收集事件驱动元素
-            eventSelectors.forEach(sel => {{
-                try {{
-                    document.querySelectorAll(sel).forEach(el => candidateSet.add(el));
-                }} catch(e) {{}}
-            }});
-            
-            // 收集特殊元素
-            specialSelectors.forEach(sel => {{
-                try {{
-                    document.querySelectorAll(sel).forEach(el => candidateSet.add(el));
-                }} catch(e) {{}}
-            }});
-            
-            // 在 balanced 和 all 模式下，收集 pointer 元素（需满足附加条件）
-            if (markMode !== 'minimal') {{
-                const allElements = document.querySelectorAll('*');
-                allElements.forEach(el => {{
-                    if (candidateSet.has(el)) return;
-                    
-                    try {{
-                        const style = window.getComputedStyle(el);
-                        if (style.cursor !== 'pointer') return;
-                        
-                        const rect = el.getBoundingClientRect();
-                        
-                        // 在 balanced 模式下，pointer 元素需满足附加条件
-                        if (markMode === 'balanced') {{
-                            // 必须有文本或 aria-label
-                            const text = (el.innerText || el.textContent || '').trim();
-                            const hasValidText = text.length > 0 && text.length < 200;
-                            const hasAriaLabel = el.hasAttribute('aria-label');
-                            
-                            // 尺寸合理（不能太大，避免容器）
-                            const isReasonableSize = rect.width < 600 && rect.height < 300;
-                            
-                            // 不是纯容器（子元素不能太多）
-                            const childCount = el.children.length;
-                            const notPureContainer = childCount < 10;
-                            
-                            if ((hasValidText || hasAriaLabel) && isReasonableSize && notPureContainer) {{
-                                candidateSet.add(el);
-                            }}
-                        }} else {{
-                            // all 模式：直接添加
-                            candidateSet.add(el);
-                        }}
-                    }} catch(e) {{}}
-                }});
-            }}
-            
-            const candidates = Array.from(candidateSet);
-            
-            // ========== 2. 过滤和打分 ==========
-            const isInputable = (el) => {{
-                const tag = el.tagName.toLowerCase();
-                if (tag === 'input') {{
-                    const type = (el.type || 'text').toLowerCase();
-                    return !['button', 'submit', 'reset', 'image', 'checkbox', 'radio', 'file', 'hidden'].includes(type);
-                }}
-                if (tag === 'textarea' || tag === 'select') return true;
-                if (el.getAttribute('contenteditable') === 'true') return true;
-                if (el.getAttribute('role') === 'textbox') return true;
-                return false;
-            }};
-            
-            const isCanvasOrSvg = (el) => {{
-                const tag = el.tagName.toLowerCase();
-                return tag === 'canvas' || tag === 'svg';
-            }};
-            
-            const scored = [];
-            
-            candidates.forEach(el => {{
-                try {{
-                    const rect = el.getBoundingClientRect();
-                    const area = rect.width * rect.height;
-                    
-                    // 过滤不可见或太小的元素
-                    if (area < minArea) return;
-                    if (rect.bottom < 0 || rect.top > window.innerHeight) return;
-                    if (rect.right < 0 || rect.left > window.innerWidth) return;
-                    
-                    const style = window.getComputedStyle(el);
-                    if (style.visibility === 'hidden' || style.display === 'none') return;
-                    if (parseFloat(style.opacity) === 0) return;
-                    
-                    // 计算分数
-                    let score = 0;
-                    const tag = el.tagName.toLowerCase();
-                    
-                    // 标签类型权重（核心交互元素得分最高）
-                    const tagScores = {{
-                        'button': 100,
-                        'a': 95,
-                        'input': 90,
-                        'textarea': 88,
-                        'select': 85,
-                        'canvas': 75,
-                        'video': 72,
-                        'audio': 70,
-                        'svg': 65,
-                        'img': 50
-                    }};
-                    score += tagScores[tag] || 30;
-                    
-                    // ARIA role 加分
-                    const role = el.getAttribute('role');
-                    const roleScores = {{
-                        'button': 25,
-                        'link': 22,
-                        'textbox': 20,
-                        'checkbox': 18,
-                        'radio': 18,
-                        'switch': 18,
-                        'menuitem': 15,
-                        'tab': 15,
-                        'option': 12,
-                        'slider': 12,
-                        'combobox': 12
-                    }};
-                    if (role && roleScores[role]) {{
-                        score += roleScores[role];
-                    }}
-                    
-                    // 有有效文本内容加分
-                    const text = (el.innerText || el.textContent || '').trim();
-                    if (text.length > 0 && text.length < 100) {{
-                        score += 15;
-                    }}
-                    
-                    // aria-label 加分
-                    if (el.hasAttribute('aria-label')) {{
-                        score += 12;
-                    }}
-                    
-                    // tabindex 加分（可键盘访问）
-                    const tabindex = el.getAttribute('tabindex');
-                    if (tabindex !== null && parseInt(tabindex) >= 0) {{
-                        score += 8;
-                    }}
-                    
-                    // onclick 加分
-                    if (el.hasAttribute('onclick')) {{
-                        score += 10;
-                    }}
-                    
-                    // 可输入元素额外加分
-                    const inputable = isInputable(el);
-                    if (inputable) {{
-                        score += 20;
-                    }}
-                    
-                    // 面积适中的元素加分（太大可能是容器）
-                    if (area > 500 && area < 50000) {{
-                        score += 5;
-                    }}
-                    
-                    scored.push({{
-                        el: el,
-                        rect: {{
-                            left: rect.left,
-                            top: rect.top,
-                            right: rect.right,
-                            bottom: rect.bottom,
-                            width: rect.width,
-                            height: rect.height
-                        }},
-                        score: score,
-                        inputable: inputable,
-                        isCanvas: isCanvasOrSvg(el)
-                    }});
-                }} catch(e) {{}}
-            }});
-            
-            // ========== 3. NMS 去重（按分数降序，抑制重叠的低分元素）==========
-            scored.sort((a, b) => b.score - a.score);
-            
-            const computeIoU = (r1, r2) => {{
-                const x1 = Math.max(r1.left, r2.left);
-                const y1 = Math.max(r1.top, r2.top);
-                const x2 = Math.min(r1.right, r2.right);
-                const y2 = Math.min(r1.bottom, r2.bottom);
-                
-                if (x2 <= x1 || y2 <= y1) return 0;
-                
-                const intersection = (x2 - x1) * (y2 - y1);
-                const area1 = r1.width * r1.height;
-                const area2 = r2.width * r2.height;
-                const union = area1 + area2 - intersection;
-                
-                return intersection / union;
-            }};
-            
-            // 检查元素是否被另一个元素完全包含
-            const isContainedBy = (inner, outer) => {{
-                return inner.left >= outer.left &&
-                       inner.right <= outer.right &&
-                       inner.top >= outer.top &&
-                       inner.bottom <= outer.bottom;
-            }};
-            
-            const kept = [];
-            scored.forEach(item => {{
-                let shouldKeep = true;
-                
-                for (const k of kept) {{
-                    const iou = computeIoU(item.rect, k.rect);
-                    
-                    // 如果 IoU 超过阈值，抑制低分元素
-                    if (iou > iouThreshold) {{
-                        shouldKeep = false;
-                        break;
-                    }}
-                    
-                    // 如果当前元素被保留的元素完全包含，也抑制（避免父子重复）
-                    if (isContainedBy(item.rect, k.rect) || isContainedBy(k.rect, item.rect)) {{
-                        // 较小的元素通常更具体，但分数高的优先
-                        const itemArea = item.rect.width * item.rect.height;
-                        const kArea = k.rect.width * k.rect.height;
-                        
-                        // 如果当前元素被包含且分数不够高，抑制
-                        if (isContainedBy(item.rect, k.rect) && item.score < k.score + 20) {{
-                            shouldKeep = false;
-                            break;
-                        }}
-                    }}
-                }}
-                
-                if (shouldKeep) {{
-                    kept.push(item);
-                }}
-            }});
-            
-            // ========== 4. Top-N 截断 ==========
-            const finalElements = kept.slice(0, maxMarks);
-            
-            // ========== 5. 渲染标签 ==========
-            let currentId = startId;
-            
-            finalElements.forEach(item => {{
-                const el = item.el;
-                const rect = item.rect;
-                
-                // 设置元素属性
-                el.setAttribute('data-ai-id', currentId);
-                el.setAttribute('data-ai-inputable', item.inputable ? 'true' : 'false');
-                el.setAttribute('data-ai-canvas', item.isCanvas ? 'true' : 'false');
-                
-                // 创建标签元素
-                const tag = document.createElement('div');
-                tag.className = 'ai-mark';
-                
-                // 标签文本格式：可输入用 [id]，Canvas/SVG 用 <id>，其他用纯数字
-                if (item.inputable) {{
-                    tag.textContent = '[' + currentId + ']';
-                }} else if (item.isCanvas) {{
-                    tag.textContent = '<' + currentId + '>';
-                }} else {{
-                    tag.textContent = currentId;
-                }}
-                
-                // 样式：可输入元素用绿色，Canvas/SVG 用蓝色，其他用红色
-                let bgColor;
-                if (item.inputable) {{
-                    bgColor = 'rgba(34, 139, 34, 0.9)';  // 绿色
-                }} else if (item.isCanvas) {{
-                    bgColor = 'rgba(30, 144, 255, 0.9)';  // 蓝色
-                }} else {{
-                    bgColor = 'rgba(220, 20, 60, 0.9)';  // 红色
-                }}
-                
-                tag.style.cssText = `
-                    position: fixed;
-                    left: ${{rect.left}}px;
-                    top: ${{rect.top}}px;
-                    z-index: 2147483647;
-                    background: ${{bgColor}};
-                    color: white;
-                    font-size: 12px;
-                    padding: 1px 3px;
-                    border-radius: 2px;
-                    pointer-events: none;
-                    border: 1px solid white;
-                    font-family: sans-serif;
-                    font-weight: bold;
-                    line-height: 1.2;
-                `;
-                
-                document.body.appendChild(tag);
-                currentId++;
-            }});
-            
-            return finalElements.length;
-        }}
-        """
+        global _mark_script_template_cache
+        
+        # 从缓存或文件加载脚本模板
+        if _mark_script_template_cache is None:
+            try:
+                with open(_MARK_SCRIPT_PATH, 'r', encoding='utf-8') as f:
+                    _mark_script_template_cache = f.read()
+                logger.debug(f"Loaded mark script from {_MARK_SCRIPT_PATH}")
+            except FileNotFoundError:
+                logger.error(f"Mark script file not found: {_MARK_SCRIPT_PATH}")
+                # 返回一个最小化的回退脚本
+                return "() => { console.error('Mark script not found'); return 0; }"
+            except Exception as e:
+                logger.error(f"Failed to load mark script: {e}")
+                return "() => { console.error('Failed to load mark script'); return 0; }"
+        
+        # 替换模板变量
+        script = _mark_script_template_cache
+        script = script.replace('{{START_ID}}', str(start_id))
+        script = script.replace('{{MAX_MARKS}}', str(self.max_marks))
+        script = script.replace('{{MIN_AREA}}', str(self.min_element_area))
+        script = script.replace('{{IOU_THRESHOLD}}', str(self.nms_iou_threshold))
+        script = script.replace('{{MARK_MODE}}', self.mark_mode)
+        
+        return script
     
     async def get_marked_screenshot(self) -> Tuple[Optional[bytes], str]:
         """获取带有元素标记的页面截图（支持跨 Frame）
@@ -735,6 +415,7 @@ class BrowserManager:
         - 拒绝访问私有网络地址（除非明确允许）
         - DNS 解析后验证 IP 地址
         - 支持域名白名单/黑名单
+        - 拦截并验证所有重定向请求（防止重定向到内网）
         """
         if not await self._init_browser():
             return None, "浏览器初始化失败。请确保已安装 Playwright 并运行 `playwright install chromium`。"
@@ -753,16 +434,83 @@ class BrowserManager:
                     blocked_domains=self.blocked_domains
                 )
             
-            # 执行 URL 安全验证
+            # 执行初始 URL 安全验证
             is_safe, validation_message = await self._url_validator.validate_url(url)
             if not is_safe:
                 logger.warning(f"Browser SSRF protection blocked URL: {url} - {validation_message}")
                 return None, f"🛡️ 安全限制：{validation_message}"
             
             logger.debug(f"Browser URL validation passed: {url}")
+            
+            # === SSRF 防护增强：拦截重定向 ===
+            # 使用请求拦截器验证所有导航请求（包括重定向）
+            blocked_redirect_info: Dict[str, Any] = {
+                "blocked": False,
+                "url": "",
+                "reason": ""
+            }
+            
+            # 保存 url_validator 引用供 handler 使用
+            url_validator = self._url_validator
+            
+            async def ssrf_protection_handler(route):
+                """请求拦截处理器：验证所有导航请求的目标 URL"""
+                request = route.request
+                request_url = request.url
+                
+                # 只验证导航请求（会导致页面 URL 变化的请求，包括重定向）
+                # 跳过资源请求（图片、CSS、JS 等）以提高性能
+                if request.is_navigation_request():
+                    try:
+                        is_safe, msg = await url_validator.validate_url(request_url)
+                        if not is_safe:
+                            logger.warning(f"SSRF protection blocked redirect to: {request_url} - {msg}")
+                            blocked_redirect_info["blocked"] = True
+                            blocked_redirect_info["url"] = request_url
+                            blocked_redirect_info["reason"] = msg
+                            await route.abort("blockedbyclient")
+                            return
+                    except Exception as e:
+                        # 验证过程出错时，出于安全考虑，阻止请求
+                        logger.warning(f"SSRF validation error for {request_url}: {e}")
+                        blocked_redirect_info["blocked"] = True
+                        blocked_redirect_info["url"] = request_url
+                        blocked_redirect_info["reason"] = f"URL 验证出错: {e}"
+                        await route.abort("blockedbyclient")
+                        return
+                
+                # 验证通过或非导航请求，继续处理
+                await route.continue_()
+            
+            # 注册请求拦截器
+            await self.page.route("**/*", ssrf_protection_handler)
             # === SSRF 防护结束 ===
             
-            await self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            try:
+                await self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                
+                # 检查是否有重定向被阻止
+                if blocked_redirect_info["blocked"]:
+                    blocked_url = blocked_redirect_info["url"]
+                    reason = blocked_redirect_info["reason"]
+                    logger.warning(f"Navigation blocked due to unsafe redirect: {blocked_url}")
+                    return None, f"🛡️ 安全限制：检测到不安全的重定向\n目标: {blocked_url}\n原因: {reason}"
+                
+                # 额外安全检查：验证最终页面 URL
+                # 这是一个双重保险，防止某些边缘情况下重定向未被拦截
+                final_url = self.page.url
+                if final_url and final_url != url:
+                    is_safe, msg = await self._url_validator.validate_url(final_url)
+                    if not is_safe:
+                        logger.warning(f"Final URL validation failed: {final_url} - {msg}")
+                        return None, f"🛡️ 安全限制：最终页面地址不安全\n地址: {final_url}\n原因: {msg}"
+                
+            finally:
+                # 确保移除请求拦截器，避免影响后续操作
+                try:
+                    await self.page.unroute("**/*", ssrf_protection_handler)
+                except Exception as e:
+                    logger.debug(f"Failed to unroute SSRF handler: {e}")
             
             # 等待页面稳定
             await asyncio.sleep(1)
@@ -775,6 +523,11 @@ class BrowserManager:
             
         except Exception as e:
             logger.error(f"Failed to navigate to {url}: {e}")
+            # 检查是否是因为重定向被阻止导致的导航失败
+            if blocked_redirect_info.get("blocked"):
+                blocked_url = blocked_redirect_info["url"]
+                reason = blocked_redirect_info["reason"]
+                return None, f"🛡️ 安全限制：检测到不安全的重定向\n目标: {blocked_url}\n原因: {reason}"
             return None, f"导航失败: {e}"
     
     async def click_element(self, element_id: int) -> Tuple[Optional[bytes], str]:
