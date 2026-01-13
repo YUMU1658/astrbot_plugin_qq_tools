@@ -70,35 +70,58 @@ async def call_onebot(client, action: str, **kwargs) -> Any:
 
 
 async def delete_single_message(client, message_id: str) -> str:
-    """内部方法：撤回单条消息"""
-    # 尝试先转为 int
-    try:
-        await call_onebot(client, 'delete_msg', message_id=int(message_id))
-        return "已撤回 (int)"
-    except Exception as e_int:
-        logger.debug(f"Failed to delete message {message_id} as int: {e_int}")
+    """撤回单条消息，自动尝试多种 message_id 格式以兼容不同 OneBot 实现
+    
+    尝试顺序：
+    1. int 格式 - 大多数 OneBot 实现
+    2. str 格式 - 某些实现要求字符串
+    3. split_int 格式 - 处理 "12345_6789" 格式的复合 ID
+    
+    Args:
+        client: OneBot 客户端实例
+        message_id: 消息 ID（字符串格式）
         
-        # 尝试直接传 string
+    Returns:
+        str: 撤回结果描述
+        
+    Raises:
+        Exception: 所有格式都尝试失败时抛出最后的异常
+    """
+    # 定义尝试策略：(策略名称, 转换函数)
+    # 转换函数返回 None 表示跳过该策略
+    def _convert_int(mid: str):
+        return int(mid)
+    
+    def _convert_str(mid: str):
+        return str(mid)
+    
+    def _convert_split_int(mid: str):
+        if "_" in str(mid):
+            return int(str(mid).split("_")[0])
+        return None
+    
+    attempts = [
+        ("int", _convert_int),
+        ("str", _convert_str),
+        ("split_int", _convert_split_int),
+    ]
+    
+    last_error = None
+    
+    for method_name, converter in attempts:
         try:
-            await call_onebot(client, 'delete_msg', message_id=str(message_id))
-            return "已撤回 (str)"
-        except Exception as e_str:
-            logger.debug(f"Failed to delete message {message_id} as str: {e_str}")
-            
-            # 如果包含下划线（例如 12345_6789），尝试只取第一部分
-            if "_" in str(message_id):
-                try:
-                    real_id = int(str(message_id).split("_")[0])
-                    logger.info(f"Trying to delete message with split ID: {real_id}")
-                    await call_onebot(client, 'delete_msg', message_id=real_id)
-                    return f"已撤回 (split int: {real_id})"
-                except Exception as e_split:
-                    logger.error(f"Failed to delete message {real_id} as split int: {e_split}")
-                    raise e_split
-            else:
-                # 如果所有尝试都失败，记录最后的错误
-                logger.error(f"Failed to delete message {message_id}: {e_str}")
-                raise e_str
+            converted_id = converter(message_id)
+            if converted_id is None:
+                continue
+            await call_onebot(client, 'delete_msg', message_id=converted_id)
+            return f"已撤回 ({method_name})"
+        except Exception as e:
+            last_error = e
+            logger.debug(f"Failed to delete message {message_id} as {method_name}: {e}")
+    
+    # 所有尝试都失败
+    logger.error(f"Failed to delete message {message_id}: {last_error}")
+    raise last_error
 
 def parse_at_content(text: str) -> List[Comp.BaseMessageComponent]:
     """解析文本中的 [At:123456]"""
