@@ -1,5 +1,5 @@
 name: astrbot_plugin_qq_tools
-version: 0.1.0-alpha.1
+version: 0.1.0
 author: YUMU1658
-desc: 为 AstrBot 提供 QQ 平台特定的工具，包括引用回复、撤回消息、网页浏览等功能。支持查询 BOT 自己发送的消息 ID。
-url: https://example.com
+desc: 为 AstrBot 提供 QQ 平台特定的工具，包括引用回复、撤回消息、网页浏览等功能。支持查询 BOT 自己发送的消息 ID。" 与JSON中提交的desc "为 AstrBot 提供 QQ 平台（OneBot / aiocqhttp）特定的工具集：引用回复、撤回消息、检索最近消息、群管理、头像查看、网页浏览（Playwright）、视频分析（Gemini）、以及「定时唤醒」等能力。让机器人在 QQ 场景下的“动手能力”更强，增强自主性。
+url: https://github.com/YUMU1658/astrbot_plugin_qq_tools
