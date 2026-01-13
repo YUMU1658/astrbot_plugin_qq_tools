@@ -1,4 +1,5 @@
 import time
+import asyncio
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.astr_agent_context import AstrAgentContext
@@ -59,7 +60,9 @@ class BanUserTool(FunctionTool):
                 return f"用户 {user_id} 不在黑名单中。"
             
             self.plugin.config["ban_list"] = new_list
-            self.plugin.config.save_config()
+            # 使用 run_in_executor 避免同步 IO 阻塞事件循环
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self.plugin.config.save_config)
             return f"已解除用户 {user_id} 的拉黑。"
 
         # 执行拉黑
@@ -74,7 +77,9 @@ class BanUserTool(FunctionTool):
         new_list.append(ban_data)
         
         self.plugin.config["ban_list"] = new_list
-        self.plugin.config.save_config()
+        # 使用 run_in_executor 避免同步 IO 阻塞事件循环
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self.plugin.config.save_config)
 
         dur_str = "永久" if duration == -1 else f"{duration}秒"
         return f"已将用户 {user_id} 拉黑。时长: {dur_str}"

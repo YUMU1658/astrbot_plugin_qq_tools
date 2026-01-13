@@ -850,7 +850,9 @@ class QQToolsPlugin(Star):
                 
                 if changed:
                     self.config["ban_list"] = new_list
-                    self.config.save_config()
+                    # 使用 run_in_executor 避免同步 IO 阻塞事件循环
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, self.config.save_config)
 
             except asyncio.CancelledError:
                 break

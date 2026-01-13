@@ -23,6 +23,31 @@ _MARK_SCRIPT_PATH = os.path.join(os.path.dirname(__file__), 'mark_script.js')
 # 脚本模板缓存（避免重复读取文件）
 _mark_script_template_cache: Optional[str] = None
 
+
+def _preload_mark_script() -> None:
+    """预加载标记脚本到缓存
+    
+    在模块加载时调用，避免运行时同步IO阻塞事件循环。
+    脚本文件很小（几KB），加载时间可忽略。
+    """
+    global _mark_script_template_cache
+    
+    if _mark_script_template_cache is not None:
+        return
+    
+    try:
+        with open(_MARK_SCRIPT_PATH, 'r', encoding='utf-8') as f:
+            _mark_script_template_cache = f.read()
+        logger.debug(f"Preloaded mark script from {_MARK_SCRIPT_PATH}")
+    except FileNotFoundError:
+        logger.error(f"Mark script file not found: {_MARK_SCRIPT_PATH}")
+    except Exception as e:
+        logger.error(f"Failed to preload mark script: {e}")
+
+
+# 模块加载时预加载脚本，避免运行时同步IO
+_preload_mark_script()
+
 # Playwright 导入会在实际使用时进行
 try:
     from playwright.async_api import async_playwright, Browser, BrowserContext, Page, Playwright, Frame
@@ -306,8 +331,9 @@ class BrowserManager:
     def _get_mark_script(self, start_id: int) -> str:
         """获取元素标记的 JavaScript 脚本
         
-        从外部文件 mark_script.js 加载脚本模板，并替换模板变量。
-        使用模块级缓存避免重复读取文件。
+        使用模块加载时预缓存的脚本模板，并替换模板变量。
+        脚本在模块导入时通过 _preload_mark_script() 预加载，
+        避免运行时同步IO阻塞事件循环。
         
         Args:
             start_id: 起始 ID
@@ -321,21 +347,10 @@ class BrowserManager:
         - NMS去重：基于 IoU 重叠抑制，避免父子元素重复标记
         - Top-N截断：限制最大标记数量，避免"满屏数字"
         """
-        global _mark_script_template_cache
-        
-        # 从缓存或文件加载脚本模板
+        # 检查缓存是否可用（应该在模块加载时已预加载）
         if _mark_script_template_cache is None:
-            try:
-                with open(_MARK_SCRIPT_PATH, 'r', encoding='utf-8') as f:
-                    _mark_script_template_cache = f.read()
-                logger.debug(f"Loaded mark script from {_MARK_SCRIPT_PATH}")
-            except FileNotFoundError:
-                logger.error(f"Mark script file not found: {_MARK_SCRIPT_PATH}")
-                # 返回一个最小化的回退脚本
-                return "() => { console.error('Mark script not found'); return 0; }"
-            except Exception as e:
-                logger.error(f"Failed to load mark script: {e}")
-                return "() => { console.error('Failed to load mark script'); return 0; }"
+            logger.error("Mark script not preloaded. This should not happen.")
+            return "() => { console.error('Mark script not preloaded'); return 0; }"
         
         # 替换模板变量
         script = _mark_script_template_cache
