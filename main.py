@@ -277,9 +277,19 @@ class QQToolsPlugin(Star):
             legacy_names = [f"qts_{name}" for name in original_browser_tool_names]  # 带前缀版本是残余
 
         if self.tool_config.get("browser", False):
-            # 自动安装依赖检测（异步执行，不阻塞初始化）
+            # =============================================
+            # 【可选功能】自动安装浏览器依赖
+            #
+            # 此功能仅在配置项 "auto_install_browser_deps" 显式设置为 True 时才会启用。
+            # 该配置项默认值为 False（关闭），即：
+            #   - 默认情况下，插件不会执行任何依赖安装操作
+            #   - 默认情况下，插件不会运行 pip install 或 playwright install
+            #   - 用户必须主动在配置中开启此选项才会触发自动安装
+            #
+            # 如果此功能仍然不符合插件规范，后续版本可能会移除此可选功能。
+            # =============================================
             if self.general_config.get("auto_install_browser_deps", False):
-                # 创建异步任务进行依赖安装，安装完成后再注册工具
+                # 用户显式启用了自动安装，创建异步任务进行依赖安装
                 asyncio.create_task(self._async_install_browser_deps_and_register(
                     legacy_names
                 ))
@@ -611,12 +621,27 @@ class QQToolsPlugin(Star):
             return None
 
     async def _ensure_browser_deps_async(self) -> bool:
-        """异步检查并自动安装浏览器依赖 (pip install playwright, playwright install chromium)
+        """【可选功能】异步检查并自动安装浏览器依赖
         
-        使用 asyncio.create_subprocess_exec 避免阻塞事件循环。
+        ⚠️ 重要说明：
+        此方法仅在配置项 "auto_install_browser_deps" 显式设置为 True 时才会被调用。
+        该配置项默认值为 False（关闭状态），因此：
+          - 默认情况下，此方法永远不会被执行
+          - 默认情况下，插件不会运行任何 pip install 或 playwright install 命令
+          - 用户必须主动在插件配置中开启 "自动尝试安装浏览器依赖" 选项才会触发此功能
+        
+        此功能的设计初衷是为不熟悉命令行的用户提供便利，但如果此实现方式
+        仍然不符合 AstrBot 插件规范，后续版本可能会移除此可选功能。
+        
+        功能描述：
+        - 检测 playwright 包是否已安装
+        - 如未安装，尝试使用 pip 安装 playwright 包
+        - 安装成功后，尝试使用 playwright install chromium 安装浏览器
+        - 使用 asyncio.create_subprocess_exec 避免阻塞事件循环
+        - 安装失败时会自动重试，并在重试时使用国内镜像源
         
         Returns:
-            bool: True 如果进行了安装，False 如果已安装或安装失败
+            bool: True 如果进行了安装操作，False 如果已安装或安装失败
         """
         try:
             import playwright

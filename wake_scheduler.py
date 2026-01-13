@@ -227,14 +227,22 @@ class WakeScheduler:
         """获取指定任务"""
         return self._tasks.get(task_id)
     
+    def _load_tasks_sync(self) -> List[dict]:
+        """同步加载任务数据（供 run_in_executor 使用）"""
+        if not os.path.exists(self.data_file):
+            return []
+        
+        with open(self.data_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
     async def _load_tasks(self):
-        """从文件加载任务数据"""
+        """从文件加载任务数据（异步包装）"""
         if not os.path.exists(self.data_file):
             return
         
         try:
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            loop = asyncio.get_running_loop()
+            data = await loop.run_in_executor(None, self._load_tasks_sync)
             
             for task_data in data:
                 task = WakeTask.from_dict(task_data)
@@ -246,12 +254,17 @@ class WakeScheduler:
         except Exception as e:
             logger.error(f"Failed to load wake tasks: {e}")
     
+    def _save_tasks_sync(self, data: List[dict]):
+        """同步保存任务数据（供 run_in_executor 使用）"""
+        with open(self.data_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    
     async def _save_tasks(self):
-        """保存任务数据到文件"""
+        """保存任务数据到文件（异步包装）"""
         try:
             data = [task.to_dict() for task in self._tasks.values()]
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._save_tasks_sync, data)
         except Exception as e:
             logger.error(f"Failed to save wake tasks: {e}")
     
