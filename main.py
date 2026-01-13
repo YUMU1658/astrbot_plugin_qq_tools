@@ -8,13 +8,13 @@ from collections import deque
 from typing import Dict, Optional, List, Tuple
 
 from astrbot.api.event import filter, AstrMessageEvent
-from astrbot.api.star import Context, Star
+from astrbot.api.star import Context, Star, StarTools
 from astrbot.api import logger
 from astrbot.api import message_components as Comp
 from astrbot.api.platform import AstrBotMessage, MessageMember, MessageType
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
-from astrbot.core.star.star_handler import star_handlers_registry
-from astrbot.core.agent.tool import FunctionTool
+# FunctionTool 使用官方 API 导入
+from astrbot.api import FunctionTool
 
 from .utils import parse_at_content, parse_leaked_tool_call, call_onebot
 from .tools.get_user_info import GetUserInfoTool
@@ -284,8 +284,8 @@ class QQToolsPlugin(Star):
         
         if self.tool_config.get("wake_scheduler", True):
             # 初始化唤醒调度器
-            from astrbot.core.utils.astrbot_path import get_astrbot_data_path
-            data_dir = os.path.join(get_astrbot_data_path(), "qq_tools_wake")
+            # 使用官方 API 获取插件专属数据目录
+            data_dir = str(StarTools.get_data_dir())
             
             self.wake_scheduler = WakeScheduler(self.context, data_dir)
             self.wake_scheduler.set_wake_callback(self._wake_callback)
