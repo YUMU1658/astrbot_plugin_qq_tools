@@ -170,76 +170,105 @@ class QQToolsPlugin(Star):
             legacy_names = [f"qts_{name}" for name in original_browser_tool_names]  # 带前缀版本是残余
 
         if self.tool_config.get("browser", False):
-            # 自动安装依赖检测
+            # 自动安装依赖检测（异步执行，不阻塞初始化）
             if self.general_config.get("auto_install_browser_deps", False):
-                if self._ensure_browser_deps():
-                    # 如果进行了安装，需要重新加载相关模块
-                    try:
-                        import importlib
-                        from . import browser_core
-                        importlib.reload(browser_core)
-                        from .tools import browser
-                        importlib.reload(browser)
-                        logger.info("Browser modules reloaded after dependency installation.")
-                    except Exception as e:
-                        logger.error(f"Failed to reload browser modules: {e}")
+                # 创建异步任务进行依赖安装，安装完成后再注册工具
+                asyncio.create_task(self._async_install_browser_deps_and_register(
+                    legacy_names
+                ))
+                logger.info("Browser dependency installation started in background...")
+                return  # 异步安装中，稍后注册工具
 
-            # 局部导入，确保获取到的是（可能重载过的）最新类定义
-            # 这也解决了在 __init__ 中因条件导入导致的 UnboundLocalError
-            from .tools.browser import (
-                BrowserOpenTool,
-                BrowserClickTool,
-                BrowserClickCoordinateTool,
-                BrowserClickInElementTool,
-                BrowserInputTool,
-                BrowserScrollTool,
-                BrowserGetLinkTool,
-                BrowserViewImageTool,
-                BrowserScreenshotTool,
-                BrowserCloseTool,
-                BrowserWaitTool,
-                BrowserSendImageTool,
-                BrowserCropTool,
-            )
-
-            # 创建所有浏览器工具实例
-            browser_tools = [
-                BrowserOpenTool(self),
-                BrowserClickTool(self),
-                BrowserClickCoordinateTool(self),
-                BrowserClickInElementTool(self),
-                BrowserInputTool(self),
-                BrowserScrollTool(self),
-                BrowserGetLinkTool(self),
-                BrowserViewImageTool(self),
-                BrowserScreenshotTool(self),
-                BrowserCloseTool(self),
-                BrowserWaitTool(self),
-                BrowserSendImageTool(self),
-                BrowserCropTool(self),
-            ]
-            
-            # 如果启用前缀，修改每个工具的名称
-            if self.add_tool_prefix:
-                for tool in browser_tools:
-                    tool.name = f"{self.tool_prefix}{tool.name}"
-            
-            # 注册所有工具
-            for tool in browser_tools:
-                self.context.add_llm_tools(tool)
-            
-            # 清理残余工具（相反前缀版本）
-            if not self.compatibility_config.get("disable_auto_uninstall", False):
-                for name in legacy_names:
-                    self.context.unregister_llm_tool(name)
-            
-            logger.info("Browser tools registered (with click_in_element and crop).")
+            # 同步路径：不需要安装依赖，直接注册工具
+            self._register_browser_tools(legacy_names)
         elif not self.compatibility_config.get("disable_auto_uninstall", False):
             # 仅当未禁用自动卸载时才执行卸载（当前版本和残余版本都卸载）
             for name in current_names:
                 self.context.unregister_llm_tool(name)
             for name in legacy_names:
                 self.context.unregister_llm_tool(name)
+
+    async def _async_install_browser_deps_and_register(self, legacy_names: list):
+        """异步安装浏览器依赖并注册工具
+        
+        Args:
+            legacy_names: 需要清理的残余工具名称列表
+        """
+        try:
+            installed = await self._ensure_browser_deps_async()
+            if installed:
+                # 如果进行了安装，需要重新加载相关模块
+                try:
+                    import importlib
+                    from . import browser_core
+                    importlib.reload(browser_core)
+                    from .tools import browser
+                    importlib.reload(browser)
+                    logger.info("Browser modules reloaded after dependency installation.")
+                except Exception as e:
+                    logger.error(f"Failed to reload browser modules: {e}")
+            
+            # 注册浏览器工具
+            self._register_browser_tools(legacy_names)
+        except Exception as e:
+            logger.error(f"Failed to install browser dependencies: {e}")
+
+    def _register_browser_tools(self, legacy_names: list):
+        """注册浏览器工具
+        
+        Args:
+            legacy_names: 需要清理的残余工具名称列表
+        """
+        # 局部导入，确保获取到的是（可能重载过的）最新类定义
+        # 这也解决了在 __init__ 中因条件导入导致的 UnboundLocalError
+        from .tools.browser import (
+            BrowserOpenTool,
+            BrowserClickTool,
+            BrowserClickCoordinateTool,
+            BrowserClickInElementTool,
+            BrowserInputTool,
+            BrowserScrollTool,
+            BrowserGetLinkTool,
+            BrowserViewImageTool,
+            BrowserScreenshotTool,
+            BrowserCloseTool,
+            BrowserWaitTool,
+            BrowserSendImageTool,
+            BrowserCropTool,
+        )
+
+        # 创建所有浏览器工具实例
+        browser_tools = [
+            BrowserOpenTool(self),
+            BrowserClickTool(self),
+            BrowserClickCoordinateTool(self),
+            BrowserClickInElementTool(self),
+            BrowserInputTool(self),
+            BrowserScrollTool(self),
+            BrowserGetLinkTool(self),
+            BrowserViewImageTool(self),
+            BrowserScreenshotTool(self),
+            BrowserCloseTool(self),
+            BrowserWaitTool(self),
+            BrowserSendImageTool(self),
+            BrowserCropTool(self),
+        ]
+        
+        # 如果启用前缀，修改每个工具的名称
+        if self.add_tool_prefix:
+            for tool in browser_tools:
+                tool.name = f"{self.tool_prefix}{tool.name}"
+        
+        # 注册所有工具
+        for tool in browser_tools:
+            self.context.add_llm_tools(tool)
+        
+        # 清理残余工具（相反前缀版本）
+        if not self.compatibility_config.get("disable_auto_uninstall", False):
+            for name in legacy_names:
+                self.context.unregister_llm_tool(name)
+        
+        logger.info("Browser tools registered (with click_in_element and crop).")
 
     def _manage_wake_tools(self):
         """管理唤醒工具（注册与卸载）"""
@@ -395,18 +424,22 @@ class QQToolsPlugin(Star):
             import traceback
             traceback.print_exc()
 
-    def _ensure_browser_deps(self) -> bool:
-        """检查并自动安装浏览器依赖 (pip install playwright, playwright install chromium)"""
+    async def _ensure_browser_deps_async(self) -> bool:
+        """异步检查并自动安装浏览器依赖 (pip install playwright, playwright install chromium)
+        
+        使用 asyncio.create_subprocess_exec 避免阻塞事件循环。
+        
+        Returns:
+            bool: True 如果进行了安装，False 如果已安装或安装失败
+        """
         try:
             import playwright
-            return False # 已安装
+            return False  # 已安装
         except ImportError:
             pass
 
-        logger.info("检测到未安装 Playwright，正在自动安装依赖...")
+        logger.info("检测到未安装 Playwright，正在后台自动安装依赖...")
         import sys
-        import subprocess
-        import os
 
         # 定义重试和镜像策略
         max_retries = 5
@@ -417,16 +450,26 @@ class QQToolsPlugin(Star):
         pkg_installed = False
         for i in range(max_retries):
             cmd = [sys.executable, "-m", "pip", "install", "playwright"]
-            if i > 0: # 重试时使用镜像
+            if i > 0:  # 重试时使用镜像
                 cmd.extend(["-i", pip_mirror])
             
             logger.info(f"Installing playwright (Attempt {i+1}/{max_retries})...")
             try:
-                subprocess.check_call(cmd)
-                pkg_installed = True
-                break
-            except subprocess.CalledProcessError:
-                logger.warning(f"Failed to install playwright (Attempt {i+1})")
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await proc.communicate()
+                
+                if proc.returncode == 0:
+                    pkg_installed = True
+                    logger.info("Playwright package installed successfully.")
+                    break
+                else:
+                    logger.warning(f"Failed to install playwright (Attempt {i+1}): {stderr.decode()}")
+            except Exception as e:
+                logger.warning(f"Failed to install playwright (Attempt {i+1}): {e}")
                 continue
         
         if not pkg_installed:
@@ -436,22 +479,32 @@ class QQToolsPlugin(Star):
         # 2. 安装 chromium
         browser_installed = False
         for i in range(max_retries):
-            # 使用 sys.executable -m playwright install chromium
             cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
             
             env = os.environ.copy()
-            if i > 0: # 重试时设置镜像环境变量
+            if i > 0:  # 重试时设置镜像环境变量
                 env["PLAYWRIGHT_DOWNLOAD_HOST"] = playwright_mirror
                 logger.info(f"Installing chromium with mirror (Attempt {i+1}/{max_retries})...")
             else:
                 logger.info(f"Installing chromium (Attempt {i+1}/{max_retries})...")
             
             try:
-                subprocess.check_call(cmd, env=env)
-                browser_installed = True
-                break
-            except subprocess.CalledProcessError:
-                logger.warning(f"Failed to install chromium (Attempt {i+1})")
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=env
+                )
+                stdout, stderr = await proc.communicate()
+                
+                if proc.returncode == 0:
+                    browser_installed = True
+                    logger.info("Chromium browser installed successfully.")
+                    break
+                else:
+                    logger.warning(f"Failed to install chromium (Attempt {i+1}): {stderr.decode()}")
+            except Exception as e:
+                logger.warning(f"Failed to install chromium (Attempt {i+1}): {e}")
                 continue
 
         if browser_installed:
