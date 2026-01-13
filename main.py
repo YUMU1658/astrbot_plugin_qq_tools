@@ -1660,8 +1660,12 @@ class QQToolsPlugin(Star):
         except Exception as e:
             logger.error(f"Error in on_after_message_sent: {e}")
 
-    async def _cache_bot_sent_messages(self, event: AiocqhttpMessageEvent):
-        """获取最近的历史消息，缓存 BOT 发送的消息"""
+    async def _cache_bot_sent_messages(self, event: AstrMessageEvent):
+        """获取最近的历史消息，缓存 BOT 发送的消息
+        
+        注意：此方法内部会延迟导入 AiocqhttpMessageEvent 进行类型检查，
+        因此参数类型注解使用通用的 AstrMessageEvent 以避免导入错误。
+        """
         client = event.bot
         session_id = event.get_session_id()
         self_id = str(event.get_self_id())
