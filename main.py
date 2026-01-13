@@ -4,19 +4,126 @@ import time
 import asyncio
 import os
 import uuid
+import importlib
 from collections import deque
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Type
 
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.api import logger
 from astrbot.api import message_components as Comp
 from astrbot.api.platform import AstrBotMessage, MessageMember, MessageType
-from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
 # FunctionTool 使用官方 API 导入
 from astrbot.api import FunctionTool
 
 from .utils import parse_at_content, parse_leaked_tool_call, call_onebot
+
+# =============================================
+# 平台事件类注册表
+# 用于解耦唤醒回调中的平台特定事件创建逻辑
+# 格式: {platform_name: (module_path, class_name, extra_kwargs_builder)}
+# extra_kwargs_builder 是一个函数，接受 platform 实例，返回额外的构造参数字典
+#
+# 注意事项：
+# 1. 模块路径和类名必须与 AstrBot 源码中的实际定义一致
+# 2. extra_kwargs_builder 中的参数名必须与事件类构造函数的参数名一致
+# 3. 如果平台适配器的客户端属性名不同，需要尝试多个可能的属性名
+# =============================================
+PLATFORM_EVENT_REGISTRY: Dict[str, Tuple[str, str, Optional[callable]]] = {
+    # OneBot V11 (aiocqhttp) - 最常用的 QQ 适配器
+    "aiocqhttp": (
+        "astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event",
+        "AiocqhttpMessageEvent",
+        lambda platform: {"bot": platform.get_client()}
+    ),
+    # QQ 官方机器人
+    "qq_official": (
+        "astrbot.core.platform.sources.qqofficial.qqofficial_message_event",
+        "QQOfficialMessageEvent",
+        lambda platform: {"bot": getattr(platform, 'bot', None)}
+    ),
+    # QQ 官方机器人 (Webhook 模式)
+    "qq_official_webhook": (
+        "astrbot.core.platform.sources.qqofficial_webhook.qo_webhook_event",
+        "QQOfficialWebhookMessageEvent",
+        lambda platform: {"bot": getattr(platform, 'bot', None)}
+    ),
+    # Telegram
+    "telegram": (
+        "astrbot.core.platform.sources.telegram.tg_event",
+        "TelegramPlatformEvent",
+        lambda platform: {"client": getattr(platform, 'client', getattr(platform, 'bot', None))}
+    ),
+    # Discord
+    "discord": (
+        "astrbot.core.platform.sources.discord.discord_platform_event",
+        "DiscordPlatformEvent",
+        lambda platform: {
+            "client": getattr(platform, 'client', getattr(platform, 'bot', None)),
+            "interaction_followup_webhook": None
+        }
+    ),
+    # Slack
+    "slack": (
+        "astrbot.core.platform.sources.slack.slack_event",
+        "SlackMessageEvent",
+        lambda platform: {"web_client": getattr(platform, 'web_client', getattr(platform, 'client', None))}
+    ),
+    # 飞书 (Lark)
+    "lark": (
+        "astrbot.core.platform.sources.lark.lark_event",
+        "LarkMessageEvent",
+        lambda platform: {"bot": getattr(platform, 'bot', getattr(platform, 'lark_client', None))}
+    ),
+    # 钉钉
+    "dingtalk": (
+        "astrbot.core.platform.sources.dingtalk.dingtalk_event",
+        "DingtalkMessageEvent",
+        lambda platform: {"client": getattr(platform, 'client', getattr(platform, 'handler', None))}
+    ),
+    # 企业微信
+    "wecom": (
+        "astrbot.core.platform.sources.wecom.wecom_event",
+        "WecomPlatformEvent",
+        lambda platform: {"client": getattr(platform, 'client', None)}
+    ),
+    # Satori 协议
+    "satori": (
+        "astrbot.core.platform.sources.satori.satori_event",
+        "SatoriPlatformEvent",
+        # Satori 的参数名是 adapter，直接传递平台实例
+        lambda platform: {"adapter": platform}
+    ),
+    # 网页聊天
+    "webchat": (
+        "astrbot.core.platform.sources.webchat.webchat_event",
+        "WebChatMessageEvent",
+        None  # WebChatMessageEvent 不需要额外参数
+    ),
+}
+
+
+def get_platform_event_class(platform_name: str) -> Optional[Tuple[Type[AstrMessageEvent], Optional[callable]]]:
+    """动态获取平台对应的事件类
+    
+    Args:
+        platform_name: 平台名称（如 aiocqhttp, telegram 等）
+        
+    Returns:
+        (事件类, 额外参数构建器) 或 None（如果平台未注册）
+    """
+    if platform_name not in PLATFORM_EVENT_REGISTRY:
+        return None
+    
+    module_path, class_name, extra_kwargs_builder = PLATFORM_EVENT_REGISTRY[platform_name]
+    
+    try:
+        module = importlib.import_module(module_path)
+        event_class = getattr(module, class_name)
+        return (event_class, extra_kwargs_builder)
+    except (ImportError, AttributeError) as e:
+        logger.debug(f"Failed to import event class for platform {platform_name}: {e}")
+        return None
 from .tools.get_user_info import GetUserInfoTool
 from .tools.get_recent_messages import GetRecentMessagesTool
 from .tools.reply_message import ReplyMessageTool
@@ -323,7 +430,25 @@ class QQToolsPlugin(Star):
             await self.wake_scheduler.initialize()
     
     async def _wake_callback(self, task: WakeTask):
-        """唤醒回调：创建事件并提交到事件队列，触发 LLM pipeline"""
+        """唤醒回调：创建事件并提交到事件队列，触发 LLM pipeline
+        
+        此方法使用平台事件注册表（PLATFORM_EVENT_REGISTRY）来动态创建
+        对应平台的事件对象，解决了之前硬编码 aiocqhttp 平台的耦合问题。
+        
+        支持的平台：
+        - aiocqhttp (OneBot V11)
+        - qq_official (QQ 官方机器人)
+        - telegram
+        - discord
+        - slack
+        - lark (飞书)
+        - dingtalk (钉钉)
+        - wecom (企业微信)
+        - satori
+        - webchat
+        
+        对于未在注册表中的平台，将使用降级方案（仅发送消息，不触发 LLM pipeline）。
+        """
         try:
             # 解析 session 信息
             # unified_msg_origin 格式: platform_id:message_type:session_id
@@ -386,23 +511,24 @@ class QQToolsPlugin(Star):
             abm.message_id = str(uuid.uuid4())
             abm.raw_message = None
             
-            # 根据平台类型创建对应的事件
+            # 获取平台名称
             platform_name = platform.meta().name
             
-            if platform_name == "aiocqhttp":
-                # aiocqhttp 平台
-                from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
-                event = AiocqhttpMessageEvent(
-                    message_str=wake_message,
-                    message_obj=abm,
-                    platform_meta=platform.meta(),
-                    session_id=session_id,
-                    bot=platform.get_client()
+            # 尝试使用平台事件注册表创建事件
+            event = await self._create_platform_event(
+                platform=platform,
+                platform_name=platform_name,
+                abm=abm,
+                wake_message=wake_message,
+                session_id=session_id
+            )
+            
+            if event is None:
+                # 平台不支持，使用降级方案
+                logger.warning(
+                    f"Platform '{platform_name}' is not in the event registry. "
+                    f"Using fallback: sending message without triggering LLM pipeline."
                 )
-            else:
-                # 其他平台使用通用方式（可能需要扩展）
-                logger.warning(f"Wake callback for platform {platform_name} may not work correctly")
-                # 尝试使用 context.send_message 作为降级方案
                 from astrbot.core.message.message_event_result import MessageEventResult
                 await self.context.send_message(
                     task.session_id,
@@ -417,12 +543,72 @@ class QQToolsPlugin(Star):
             # 提交事件到队列
             platform.commit_event(event)
             
-            logger.info(f"Wake event committed for session {task.session_id}")
+            logger.info(f"Wake event committed for session {task.session_id} (platform: {platform_name})")
             
         except Exception as e:
             logger.error(f"Failed to execute wake callback: {e}")
             import traceback
             traceback.print_exc()
+    
+    async def _create_platform_event(
+        self,
+        platform,
+        platform_name: str,
+        abm: AstrBotMessage,
+        wake_message: str,
+        session_id: str
+    ) -> Optional[AstrMessageEvent]:
+        """根据平台类型创建对应的事件对象
+        
+        使用 PLATFORM_EVENT_REGISTRY 动态加载平台事件类，
+        避免硬编码特定平台的事件类。
+        
+        Args:
+            platform: 平台适配器实例
+            platform_name: 平台名称
+            abm: AstrBotMessage 对象
+            wake_message: 唤醒消息内容
+            session_id: 会话 ID
+            
+        Returns:
+            AstrMessageEvent 子类实例，如果平台不支持则返回 None
+        """
+        # 从注册表获取事件类
+        result = get_platform_event_class(platform_name)
+        
+        if result is None:
+            # 尝试使用平台适配器的 handle_msg 方法作为备选方案
+            # 但由于 handle_msg 会直接 commit_event，这里不使用它
+            # 而是返回 None，让调用者使用降级方案
+            return None
+        
+        event_class, extra_kwargs_builder = result
+        
+        try:
+            # 构建基础参数（所有事件类都需要的参数）
+            kwargs = {
+                "message_str": wake_message,
+                "message_obj": abm,
+                "platform_meta": platform.meta(),
+                "session_id": session_id,
+            }
+            
+            # 添加平台特定的额外参数
+            if extra_kwargs_builder is not None:
+                try:
+                    extra_kwargs = extra_kwargs_builder(platform)
+                    if extra_kwargs:
+                        kwargs.update(extra_kwargs)
+                except Exception as e:
+                    logger.debug(f"Failed to build extra kwargs for {platform_name}: {e}")
+            
+            # 创建事件实例
+            event = event_class(**kwargs)
+            return event
+            
+        except Exception as e:
+            logger.warning(f"Failed to create event for platform {platform_name}: {e}")
+            return None
 
     async def _ensure_browser_deps_async(self) -> bool:
         """异步检查并自动安装浏览器依赖 (pip install playwright, playwright install chromium)
@@ -654,7 +840,13 @@ class QQToolsPlugin(Star):
         
         try:
             # 检查是否是 poke notice 事件
-            if isinstance(event, AiocqhttpMessageEvent):
+            # 使用延迟导入避免硬编码依赖
+            try:
+                from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
+            except ImportError:
+                AiocqhttpMessageEvent = None
+            
+            if AiocqhttpMessageEvent and isinstance(event, AiocqhttpMessageEvent):
                 raw_message = getattr(event.message_obj, 'raw_message', None)
                 
                 # raw_message 可能是 dict 或 Event 对象
@@ -1087,6 +1279,12 @@ class QQToolsPlugin(Star):
     def _enhance_reply_quote(self, event: AstrMessageEvent):
         """增强 Reply 段的 message_str，使日志/上下文能显示图片/文件等被引用内容。"""
         # 仅对 aiocqhttp 平台生效（其他平台的 Reply 结构可能不同）
+        # 使用延迟导入避免硬编码依赖
+        try:
+            from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
+        except ImportError:
+            return  # 如果无法导入，跳过此功能
+        
         if not isinstance(event, AiocqhttpMessageEvent):
             return
 
@@ -1364,6 +1562,12 @@ class QQToolsPlugin(Star):
         同时支持消息内容过滤。
         """
         # 仅针对 QQ 平台 (Aiocqhttp)
+        # 使用延迟导入避免硬编码依赖
+        try:
+            from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
+        except ImportError:
+            return  # 如果无法导入，跳过此功能
+        
         if not isinstance(event, AiocqhttpMessageEvent):
             return
 
@@ -1435,8 +1639,14 @@ class QQToolsPlugin(Star):
             # 检查是否启用了缓存 BOT 消息功能
             if not self.general_config.get("cache_bot_messages", True):
                 return
-                
+            
             # 仅针对 QQ 平台 (Aiocqhttp)
+            # 使用延迟导入避免硬编码依赖
+            try:
+                from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
+            except ImportError:
+                return  # 如果无法导入，跳过此功能
+            
             if not isinstance(event, AiocqhttpMessageEvent):
                 return
                 
@@ -1589,6 +1799,12 @@ class QQToolsPlugin(Star):
         Returns:
             消息信息列表
         """
+        # 使用延迟导入避免硬编码依赖
+        try:
+            from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
+        except ImportError:
+            return []  # 如果无法导入，返回空列表
+        
         if not isinstance(event, AiocqhttpMessageEvent):
             return []
         

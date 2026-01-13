@@ -1,9 +1,11 @@
 import os
 import json
 import base64
+import asyncio
 import aiohttp
 import uuid
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, List, Any, Tuple
 from astrbot.api import logger
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
@@ -18,6 +20,9 @@ from ..utils import call_onebot
 SUPPORTED_IMAGE_FORMATS = {'image/png', 'image/jpeg', 'image/webp'}
 # 需要转换的格式
 CONVERT_IMAGE_FORMATS = {'image/gif', 'image/bmp', 'image/tiff', 'image/ico'}
+
+# 图片转换专用线程池（限制并发数，避免占用过多资源）
+_image_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='img_conv')
 
 
 class GetMessageDetailTool(FunctionTool):
@@ -351,7 +356,7 @@ class GetMessageDetailTool(FunctionTool):
             Tuple[base64_data_url, error_message]: 成功时返回 (data_url, None)，失败时返回 (None, error)
         """
         try:
-            # 下载图片
+            # 下载图片（异步）
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     if resp.status != 200:
@@ -367,45 +372,20 @@ class GetMessageDetailTool(FunctionTool):
             
             # 检查是否需要转换
             if content_type in SUPPORTED_IMAGE_FORMATS:
-                # 格式已支持，直接编码为 base64
+                # 格式已支持，直接编码为 base64（轻量操作，无需线程池）
                 base64_data = base64.b64encode(image_data).decode('utf-8')
                 return f"data:{content_type};base64,{base64_data}", None
             
             elif content_type in CONVERT_IMAGE_FORMATS or content_type.startswith('image/'):
-                # 需要转换格式
-                try:
-                    from PIL import Image as PILImage
-                    
-                    img = PILImage.open(BytesIO(image_data))
-                    
-                    # GIF 可能有多帧，只取第一帧
-                    if hasattr(img, 'n_frames') and img.n_frames > 1:
-                        img.seek(0)
-                    
-                    # 转换为 RGB（处理 RGBA、P 等模式）
-                    if img.mode in ('RGBA', 'LA', 'P'):
-                        # 创建白色背景
-                        background = PILImage.new('RGB', img.size, (255, 255, 255))
-                        if img.mode == 'P':
-                            img = img.convert('RGBA')
-                        background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
-                        img = background
-                    elif img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    
-                    # 保存为 PNG（无损）
-                    buffer = BytesIO()
-                    img.save(buffer, format='PNG', optimize=True)
-                    buffer.seek(0)
-                    
-                    base64_data = base64.b64encode(buffer.read()).decode('utf-8')
-                    logger.debug(f"Converted image from {content_type} to PNG")
-                    return f"data:image/png;base64,{base64_data}", None
-                    
-                except ImportError:
-                    return None, "需要 PIL 库来转换图片格式"
-                except Exception as e:
-                    return None, f"图片转换失败: {e}"
+                # 需要转换格式 - 使用线程池避免阻塞事件循环
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(
+                    _image_executor,
+                    self._convert_image_sync,
+                    image_data,
+                    content_type
+                )
+                return result
             else:
                 return None, f"不支持的图片格式: {content_type}"
                 
@@ -413,6 +393,53 @@ class GetMessageDetailTool(FunctionTool):
             return None, f"网络错误: {e}"
         except Exception as e:
             return None, f"处理失败: {e}"
+    
+    def _convert_image_sync(self, image_data: bytes, content_type: str) -> Tuple[Optional[str], Optional[str]]:
+        """同步图片转换（在线程池中执行）
+        
+        将图片转换为 PNG 格式。此方法是 CPU 密集型操作，
+        应通过 run_in_executor 在线程池中调用，避免阻塞事件循环。
+        
+        Args:
+            image_data: 原始图片二进制数据
+            content_type: 原始图片的 MIME 类型
+            
+        Returns:
+            Tuple[base64_data_url, error_message]: 成功时返回 (data_url, None)，失败时返回 (None, error)
+        """
+        try:
+            from PIL import Image as PILImage
+            
+            img = PILImage.open(BytesIO(image_data))
+            
+            # GIF 可能有多帧，只取第一帧
+            if hasattr(img, 'n_frames') and img.n_frames > 1:
+                img.seek(0)
+            
+            # 转换为 RGB（处理 RGBA、P 等模式）
+            if img.mode in ('RGBA', 'LA', 'P'):
+                # 创建白色背景
+                background = PILImage.new('RGB', img.size, (255, 255, 255))
+                if img.mode == 'P':
+                    img = img.convert('RGBA')
+                background.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                img = background
+            elif img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # 保存为 PNG（无损）
+            buffer = BytesIO()
+            img.save(buffer, format='PNG', optimize=True)
+            buffer.seek(0)
+            
+            base64_data = base64.b64encode(buffer.read()).decode('utf-8')
+            logger.debug(f"Converted image from {content_type} to PNG")
+            return f"data:image/png;base64,{base64_data}", None
+            
+        except ImportError:
+            return None, "需要 PIL 库来转换图片格式"
+        except Exception as e:
+            return None, f"图片转换失败: {e}"
     
     def _detect_image_format(self, data: bytes) -> Optional[str]:
         """通过文件头检测图片格式"""
