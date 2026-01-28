@@ -193,7 +193,10 @@ class BrowserOpenTool(FunctionTool):
             # 安全配置 - SSRF 防护
             allow_private_network=config.get("allow_private_network", False),
             allowed_domains=config.get("allowed_domains", []),
-            blocked_domains=config.get("blocked_domains", [])
+            blocked_domains=config.get("blocked_domains", []),
+            # 等待配置
+            post_action_wait_ms=config.get("post_action_wait_ms", 500),
+            user_screenshot_wait_ms=config.get("user_screenshot_wait_ms", 500)
         )
         
         # 打开网页
@@ -272,39 +275,33 @@ class BrowserClickTool(FunctionTool):
         return await inject_browser_image(context, screenshot, info)
 
 
-class BrowserClickCoordinateTool(FunctionTool):
-    """点击坐标工具 (兜底)"""
+class BrowserGridOverlayTool(FunctionTool):
+    """点位辅助截图工具"""
     
     def __init__(self, plugin_instance):
         super().__init__(
-            name="browser_click_xy",
+            name="browser_grid_overlay",
             description=(
-                "这是一个兜底工具。当且仅当截图中找不到红色数字 ID 时（如地图、验证码、Canvas 游戏），使用此工具。"
-                "注意：坐标 (x, y) 必须基于当前的浏览器分辨率。请勿假设固定分辨率，请根据截图比例和系统提示中的分辨率数值估算坐标。"
+                "在当前页面截图上叠加网格与相对坐标轴 (0.0~1.0)，帮助定位元素位置。\n"
+                "当页面上的元素没有被自动标记（无红色数字ID）时，请先使用此工具获取网格截图，然后根据网格坐标使用 browser_click_relative 工具点击。"
             ),
             parameters={
                 "type": "object",
                 "properties": {
-                    "x": {
-                        "type": "integer",
-                        "description": "点击位置的 X 坐标",
-                    },
-                    "y": {
-                        "type": "integer",
-                        "description": "点击位置的 Y 坐标",
+                    "grid_step": {
+                        "type": "number",
+                        "description": "网格间距（0.05~0.25），默认 0.1 (10%)",
+                        "minimum": 0.05,
+                        "maximum": 0.25,
                     },
                 },
-                "required": ["x", "y"],
+                "required": [],
             }
         )
         self.plugin = plugin_instance
     
     async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs) -> ToolExecResult:
-        x = kwargs.get("x")
-        y = kwargs.get("y")
-        
-        if x is None or y is None:
-            return "❌ 缺少参数：x 或 y"
+        grid_step = kwargs.get("grid_step", 0.1)
         
         event = context.context.event
         user_id = event.get_sender_id()
@@ -319,8 +316,78 @@ class BrowserClickCoordinateTool(FunctionTool):
         if not has_permission:
             return f"❌ {msg}"
         
-        # 点击坐标
-        screenshot, info = await browser_manager.click_coordinates(int(x), int(y))
+        # 检查浏览器是否已打开页面
+        if not browser_manager.page:
+            return "❌ 浏览器未打开任何页面。请先使用 browser_open 打开网页。"
+        
+        # 获取网格截图
+        screenshot, info = await browser_manager.get_grid_overlay_screenshot(float(grid_step))
+        
+        if screenshot is None:
+            return f"❌ {info}"
+        
+        # 注入截图（使用共享函数，自定义 image_id）
+        return await inject_browser_image(
+            context, screenshot, info,
+            image_id="browser_grid_image",
+            success_suffix="系统提示：网格辅助图已加载。请观察网格坐标，估算目标位置的相对坐标 (rx, ry)，然后使用 browser_click_relative 进行点击。"
+        )
+
+
+class BrowserClickRelativeTool(FunctionTool):
+    """相对坐标点击工具"""
+    
+    def __init__(self, plugin_instance):
+        super().__init__(
+            name="browser_click_relative",
+            description=(
+                "点击页面上的相对坐标位置 (0.0~1.0)。\n"
+                "需配合 browser_grid_overlay 工具使用：先获取网格截图，观察目标位置的相对坐标，再调用此工具。\n"
+                "坐标范围：左上角 (0, 0)，右下角 (1, 1)。"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "rx": {
+                        "type": "number",
+                        "description": "相对 X 坐标 (0.0~1.0)，例如 0.5 表示水平居中",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
+                    "ry": {
+                        "type": "number",
+                        "description": "相对 Y 坐标 (0.0~1.0)，例如 0.5 表示垂直居中",
+                        "minimum": 0,
+                        "maximum": 1,
+                    },
+                },
+                "required": ["rx", "ry"],
+            }
+        )
+        self.plugin = plugin_instance
+    
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs) -> ToolExecResult:
+        rx = kwargs.get("rx")
+        ry = kwargs.get("ry")
+        
+        if rx is None or ry is None:
+            return "❌ 缺少参数：rx 或 ry"
+        
+        event = context.context.event
+        user_id = event.get_sender_id()
+        
+        # 工具权限检查
+        has_permission, reason = await _check_browser_tool_permission(self.plugin, self.name, event)
+        if not has_permission:
+            return reason
+        
+        # 检查浏览器会话权限
+        has_permission, msg = await browser_manager.acquire_permission(user_id)
+        if not has_permission:
+            return f"❌ {msg}"
+        
+        # 相对点击
+        screenshot, info = await browser_manager.click_relative(float(rx), float(ry))
         
         if screenshot is None:
             return f"❌ {info}"
@@ -544,19 +611,28 @@ class BrowserViewImageTool(FunctionTool):
 
 
 class BrowserScreenshotTool(FunctionTool):
-    """发送截图给用户工具"""
+    """生成用户截图（预览/待确认发送）工具"""
     
     def __init__(self, plugin_instance):
         super().__init__(
             name="browser_screenshot",
-            description="将当前浏览器页面的截图发送给用户。当用户希望看到网页内容时使用此工具。调用此工具后，截图会自动发送给用户。",
+            description=(
+                "生成当前浏览器页面的截图预览（默认不直接发送给用户）。\n"
+                "此工具会把截图加载到模型视觉上下文中，供模型确认截图内容无误后，再调用 browser_screenshot_confirm 发送或取消。\n\n"
+                "⚠️ 如果你确实希望跳过确认直接发送（不推荐），可传入 require_confirm=false。"
+            ),
             parameters={
                 "type": "object",
                 "properties": {
                     "clean": {
                         "type": "boolean",
-                        "description": "是否发送干净的截图（不含元素标记）。默认 false，会包含红色数字标记。",
+                        "description": "是否生成干净的截图（不含元素标记）。默认 false，会包含红色数字标记。",
                     },
+                    "require_confirm": {
+                        "type": "boolean",
+                        "description": "是否需要二次确认后才发送给用户。默认 true。设为 false 将直接发送（旧行为）。",
+                        "default": True
+                    }
                 },
                 "required": [],
             }
@@ -584,6 +660,11 @@ class BrowserScreenshotTool(FunctionTool):
             return "❌ 浏览器未打开任何页面。请先使用 browser_open 打开网页。"
         
         try:
+            require_confirm = kwargs.get("require_confirm", True)
+
+            # 用户截图前等待，确保页面完全加载
+            await asyncio.sleep(browser_manager.user_screenshot_wait_ms / 1000.0)
+
             if clean:
                 # 隐藏所有 Frame 的标记后截图
                 for frame in browser_manager.page.frames:
@@ -603,7 +684,7 @@ class BrowserScreenshotTool(FunctionTool):
                 except TypeError:
                     # 兼容旧版 playwright
                     screenshot = await browser_manager.page.screenshot(type='png')
-                
+
                 # 恢复标记
                 for frame in browser_manager.page.frames:
                     try:
@@ -618,30 +699,121 @@ class BrowserScreenshotTool(FunctionTool):
             else:
                 # 确保标记存在并截图
                 screenshot, _ = await browser_manager.get_marked_screenshot()
-            
+
             if screenshot is None:
                 return "❌ 截图失败"
-            
+
             # 获取页面信息
             page_info = await browser_manager.get_page_info()
             title = page_info.get("title", "未知页面")
             url = page_info.get("url", "")
-            
-            # 构造消息链：图片
-            chain = [
-                Comp.Image.fromBytes(screenshot)
-            ]
-            
-            # 直接发送图片给用户
-            await event.send(event.chain_result(chain))
-            
-            logger.info(f"Browser screenshot sent to user: {title}")
-            
-            return f"✅ 截图已发送给用户。\n📸 页面: {title}\n🔗 {url}"
-            
+
+            if not require_confirm:
+                # 旧行为：直接发送给用户（不推荐，但保留兼容）
+                chain = [Comp.Image.fromBytes(screenshot)]
+                await event.send(event.chain_result(chain))
+                logger.info(f"Browser screenshot sent to user (no confirm): {title}")
+                return f"✅ 截图已发送给用户。\n📸 页面: {title}\n🔗 {url}"
+
+            # 新行为：仅生成预览并缓存，等待确认
+            browser_manager._pending_user_screenshot = screenshot
+            browser_manager._pending_user_screenshot_meta = {
+                "user_id": str(user_id),
+                "title": title,
+                "url": url,
+                "clean": bool(clean)
+            }
+
+            suffix = (
+                "系统提示：已生成【待发送给用户】的截图预览（尚未发送）。\n"
+                "请你先检查截图内容是否正确，然后二选一：\n"
+                "- 调用 browser_screenshot_confirm 并设置 action=send 发送给用户\n"
+                "- 调用 browser_screenshot_confirm 并设置 action=cancel 取消发送，继续操作"
+            )
+            return await inject_browser_image(
+                context,
+                screenshot,
+                f"截图预览已生成。\n📸 页面: {title}\n🔗 {url}",
+                image_id="browser_user_screenshot_preview",
+                success_suffix=suffix
+            )
+
         except Exception as e:
             logger.error(f"Failed to take screenshot: {e}")
             return f"❌ 截图失败: {e}"
+
+
+class BrowserScreenshotConfirmTool(FunctionTool):
+    """确认/取消发送截图给用户工具"""
+
+    def __init__(self, plugin_instance):
+        super().__init__(
+            name="browser_screenshot_confirm",
+            description=(
+                "对 browser_screenshot 生成的【待发送截图】进行二次确认。\n"
+                "- action=send：发送截图给用户\n"
+                "- action=cancel：取消发送并清空待发送截图"
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "确认动作：send=发送，cancel=取消",
+                        "enum": ["send", "cancel"]
+                    }
+                },
+                "required": ["action"],
+            }
+        )
+        self.plugin = plugin_instance
+
+    async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs) -> ToolExecResult:
+        action = (kwargs.get("action") or "").strip().lower()
+        if action not in ("send", "cancel"):
+            return "❌ 缺少或错误参数：action（仅支持 send/cancel）"
+
+        event = context.context.event
+        user_id = event.get_sender_id()
+
+        # 工具权限检查
+        has_permission, reason = await _check_browser_tool_permission(self.plugin, self.name, event)
+        if not has_permission:
+            return reason
+
+        # 检查浏览器会话权限
+        has_permission, msg = await browser_manager.acquire_permission(user_id)
+        if not has_permission:
+            return f"❌ {msg}"
+
+        pending = getattr(browser_manager, "_pending_user_screenshot", None)
+        meta = getattr(browser_manager, "_pending_user_screenshot_meta", {}) or {}
+
+        if not pending:
+            return "❌ 当前没有待发送的截图。请先调用 browser_screenshot 生成预览。"
+
+        # 安全校验：只允许同一用户确认发送
+        pending_user_id = str(meta.get("user_id", ""))
+        if pending_user_id and str(user_id) != pending_user_id:
+            return "❌ 待发送截图不属于当前用户会话，无法确认发送。"
+
+        title = meta.get("title", "未知页面")
+        url = meta.get("url", "")
+
+        if action == "cancel":
+            browser_manager._pending_user_screenshot = None
+            browser_manager._pending_user_screenshot_meta = {}
+            return "✅ 已取消发送截图（待发送截图已清空）。"
+
+        # action == send
+        chain = [Comp.Image.fromBytes(pending)]
+        await event.send(event.chain_result(chain))
+
+        browser_manager._pending_user_screenshot = None
+        browser_manager._pending_user_screenshot_meta = {}
+
+        logger.info(f"Browser screenshot sent to user (confirmed): {title}")
+        return f"✅ 截图已发送给用户。\n📸 页面: {title}\n🔗 {url}"
 
 
 class BrowserCloseTool(FunctionTool):

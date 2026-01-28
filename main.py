@@ -150,7 +150,8 @@ from .wake_scheduler import WakeScheduler, WakeTask
 from .tools.browser import (
     BrowserOpenTool,
     BrowserClickTool,
-    BrowserClickCoordinateTool,
+    BrowserGridOverlayTool,  # 新增：点位辅助截图
+    BrowserClickRelativeTool,  # 新增：相对坐标点击
     BrowserClickInElementTool,  # 新增：元素内相对位置点击
     BrowserInputTool,
     BrowserScrollTool,
@@ -262,10 +263,13 @@ class QQToolsPlugin(Star):
         """管理浏览器工具（注册与卸载）"""
         # 原始浏览器工具名称列表
         original_browser_tool_names = [
-            "browser_open", "browser_click", "browser_click_xy",
+            "browser_open", "browser_click",
+            "browser_grid_overlay", "browser_click_relative",  # 新增
             "browser_click_in_element", "browser_input", "browser_scroll",
             "browser_get_link", "browser_view_image", "browser_screenshot",
-            "browser_close", "browser_wait", "browser_send_image", "browser_crop"
+            "browser_screenshot_confirm",
+            "browser_close", "browser_wait", "browser_send_image", "browser_crop",
+            "browser_click_xy" # 仍然注册，用于清理旧版本
         ]
         
         # 计算当前名称列表和残余名称列表
@@ -341,13 +345,15 @@ class QQToolsPlugin(Star):
         from .tools.browser import (
             BrowserOpenTool,
             BrowserClickTool,
-            BrowserClickCoordinateTool,
+            BrowserGridOverlayTool,
+            BrowserClickRelativeTool,
             BrowserClickInElementTool,
             BrowserInputTool,
             BrowserScrollTool,
             BrowserGetLinkTool,
             BrowserViewImageTool,
             BrowserScreenshotTool,
+            BrowserScreenshotConfirmTool,
             BrowserCloseTool,
             BrowserWaitTool,
             BrowserSendImageTool,
@@ -358,13 +364,15 @@ class QQToolsPlugin(Star):
         browser_tools = [
             BrowserOpenTool(self),
             BrowserClickTool(self),
-            BrowserClickCoordinateTool(self),
+            BrowserGridOverlayTool(self),
+            BrowserClickRelativeTool(self),
             BrowserClickInElementTool(self),
             BrowserInputTool(self),
             BrowserScrollTool(self),
             BrowserGetLinkTool(self),
             BrowserViewImageTool(self),
             BrowserScreenshotTool(self),
+            BrowserScreenshotConfirmTool(self),
             BrowserCloseTool(self),
             BrowserWaitTool(self),
             BrowserSendImageTool(self),

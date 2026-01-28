@@ -124,7 +124,9 @@
 | 工具名 | 作用 |
 |---|---|
 | `browser_open` | 打开网页并生成带标记截图（注入视觉上下文） |
-| `browser_click` / `browser_click_xy` | 按标记点击 / 按坐标点击 |
+| `browser_click` | 按红色数字标记点击 |
+| `browser_grid_overlay` | **点位辅助**：显示网格与坐标轴（用于定位未标记元素） |
+| `browser_click_relative` | **相对点击**：配合网格工具，点击页面相对坐标 |
 | `browser_click_in_element` | 在 Canvas/SVG 等元素内相对位置点击 |
 | `browser_input` | 向输入框输入 |
 | `browser_scroll` | 滚动页面 |
@@ -170,11 +172,13 @@
 > 建议把群管理类工具放在 `tool_permission.admin_only_tools` 中，只允许管理员/白名单触发。
 
 ### 4) 网页浏览（需要 Playwright）
-- “打开这个网页并帮我找到下载按钮：https://example.com”  
-- “在页面里搜索『pricing』并截图给我”  
-- “把页面滚动到最底部，看看有没有 FAQ”
+- “打开这个网页并帮我找到下载按钮：https://example.com”
+- “在页面里搜索『pricing』并截图给我”
+- “找不到按钮？用**网格工具**看一下，然后点右下角那个位置。”
 
-> 机制说明：`browser_open` 会给 LLM 注入一张带数字标记的截图，模型可据此点击/输入/滚动。
+> 机制说明：
+> 1. `browser_open` 会给 LLM 注入一张带数字标记的截图，模型可据此点击/输入/滚动。
+> 2. 如果页面元素无法被自动标记（如 Canvas 游戏、复杂地图），模型可调用 `browser_grid_overlay` 获取网格辅助图，再通过 `browser_click_relative` 进行坐标点击。
 
 ### 5) 视频分析（需要 Gemini Key）
 - “帮我总结这个 B 站视频内容：BV1xxxxxx”  
@@ -202,9 +206,29 @@
 - `allowed_domains`（域名白名单）
 - `blocked_domains`（域名黑名单，优先级更高）
 
-**除非你非常确定自己在做什么，否则不要开启 `allow_private_network`。**
+**除非你非常确定自己在做什么,否则不要开启 `allow_private_network`。**
 
-### 3) 工具名冲突：前缀机制
+### 3) 浏览器等待策略配置
+为确保交互操作后页面状态正确更新,插件提供了两个等待配置:
+- `browser_config.post_action_wait_ms`（默认 500ms）：点击、输入、滚动等交互后,在截图前的等待时间
+- `browser_config.user_screenshot_wait_ms`（默认 500ms）：`browser_screenshot` 工具发送截图给用户前的等待时间
+
+这些配置确保:
+- 点击按钮后,页面有时间加载新内容
+- 输入文本后,页面动态效果有时间完成
+- 用户截图时看到完全加载的页面状态
+
+可在配置文件中调整（范围 100-2000ms）:
+```json
+{
+  "browser_config": {
+    "post_action_wait_ms": 500,
+    "user_screenshot_wait_ms": 500
+  }
+}
+```
+
+### 4) 工具名冲突：前缀机制
 如果你装了多个插件，可能存在工具重名。  
 开启 `compatibility.add_tool_prefix=true` 后，本插件工具将全部变为 `qts_***`，同时自动清理旧名称残留（可用 `disable_auto_uninstall` 控制）。
 
@@ -235,9 +259,9 @@
 - 若担心 `[MSG_ID:xxx]` 进入长期记忆，可开启 `compatibility.delay_append_msg_id=true`
 
 ### Q3：浏览器工具无法使用/报 Playwright 错误？
-- 需要安装依赖：
+- 需要安装依赖（注意新增了 Pillow 依赖）：
   ```bash
-  pip install playwright
+  pip install playwright Pillow
   playwright install chromium
   ```
 - 确保已开启：`tools.browser=true`

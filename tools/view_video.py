@@ -25,7 +25,12 @@ class ViewVideoTool(FunctionTool):
     def __init__(self, plugin_instance):
         super().__init__(
             name="view_video",
-            description="查看并分析视频内容。支持 B站视频（链接/BV号）或 QQ视频消息（message_id）。调用后你将获得视频内容的文本描述。",
+            description="查看并分析视频内容。支持多种视频来源：\n"
+                        "1. B站视频 - 链接/BV号\n"
+                        "2. QQ视频消息 - message_id\n"
+                        "3. 浏览器网页中的视频元素 - element_id\n"
+                        "4. 视频直链URL - video_url\n"
+                        "调用后你将获得视频内容的文本描述。",
             parameters={
                 "type": "object",
                 "properties": {
@@ -36,6 +41,14 @@ class ViewVideoTool(FunctionTool):
                     "bilibili": {
                         "type": "string",
                         "description": "B站视频标识。支持BV号(BV1xx...)、av号(av1xx)、视频链接(bilibili.com)、短链(b23.tv)或包含这些内容的分享文本。",
+                    },
+                    "element_id": {
+                        "type": "integer",
+                        "description": "浏览器网页中视频元素的ID。需要先使用 browser_open 打开网页，然后使用截图中红色标记的元素ID。",
+                    },
+                    "video_url": {
+                        "type": "string",
+                        "description": "视频的直链URL。支持 HTTP/HTTPS 链接，如 https://example.com/video.mp4",
                     }
                 },
                 "required": [],
@@ -91,9 +104,15 @@ class ViewVideoTool(FunctionTool):
         
         message_id = kwargs.get("message_id")
         bilibili_input = kwargs.get("bilibili")
+        element_id = kwargs.get("element_id")
+        video_url_input = kwargs.get("video_url")
         
-        if not message_id and not bilibili_input:
-            return "❌ 缺少参数：请填写 message_id 或 bilibili。\n💡 提示: 如果是QQ视频消息请填message_id；如果是B站链接/BV号请填bilibili。"
+        if not message_id and not bilibili_input and element_id is None and not video_url_input:
+            return "❌ 缺少参数：请填写以下参数之一：\n" \
+                   "• message_id - QQ视频消息ID\n" \
+                   "• bilibili - B站视频链接/BV号\n" \
+                   "• element_id - 浏览器网页中的视频元素ID\n" \
+                   "• video_url - 视频直链URL"
 
         # 检查配置
         api_key = self.config.get("api_key")
@@ -241,6 +260,43 @@ class ViewVideoTool(FunctionTool):
                 except Exception as e:
                     logger.error(f"Error getting bilibili info: {e}\n{traceback.format_exc()}")
                     return self._format_error("获取B站信息", e)
+
+            elif element_id is not None:
+                # --- Browser Video Element Logic ---
+                try:
+                    from ..browser_core import browser_manager
+                    
+                    # 检查浏览器是否已打开
+                    if not browser_manager.page:
+                        return "❌ 浏览器未打开任何页面。请先使用 browser_open 打开网页，然后在截图中找到视频元素的ID。"
+                    
+                    # 从页面获取视频元素信息
+                    video_info = await self._get_video_from_browser_element(element_id)
+                    
+                    if video_info.get("error"):
+                        return f"❌ {video_info['error']}"
+                    
+                    video_url = video_info.get("src")
+                    file_name = video_info.get("filename", f"video_element_{element_id}.mp4")
+                    
+                    if not video_url:
+                        return "❌ 无法获取视频元素的播放地址。该视频可能使用了 blob URL 或需要特殊授权。"
+                    
+                except ImportError:
+                    return "❌ 浏览器模块未启用。请确保已启用浏览器工具。"
+                except Exception as e:
+                    logger.error(f"Error getting video from browser element: {e}\n{traceback.format_exc()}")
+                    return self._format_error("获取浏览器视频元素", e)
+
+            elif video_url_input:
+                # --- Direct Video URL Logic ---
+                video_url = video_url_input.strip()
+                
+                # 基本 URL 验证
+                if not video_url.startswith(('http://', 'https://')):
+                    return "❌ 无效的视频URL。请提供以 http:// 或 https:// 开头的视频直链。"
+                
+                file_name = f"video_url_{int(time.time())}.mp4"
 
             # 2. 下载视频
             # 使用 AstrBot 数据目录下的专用临时目录，避免不同部署方式下的路径问题
@@ -770,6 +826,122 @@ class ViewVideoTool(FunctionTool):
         except Exception as e:
             error_msg = f"❌ Gemini API 调用异常\n🔴 错误类型: {type(e).__name__}\n💬 错误信息: {e}\n📝 API地址: {api_base}\n📝 模型: {model_id}"
             return None, error_msg
+
+    # --- Browser Video Element Helper Methods ---
+
+    async def _get_video_from_browser_element(self, element_id: int) -> Dict:
+        """从浏览器页面获取视频元素信息
+        
+        Args:
+            element_id: 元素 ID (data-ai-id)
+            
+        Returns:
+            dict: {'src': video_url, 'filename': name, 'poster': poster_url} 或 {'error': message}
+        """
+        from ..browser_core import browser_manager
+        
+        if not browser_manager.page:
+            return {"error": "浏览器未初始化"}
+        
+        try:
+            target_frame = None
+            
+            # 遍历所有 Frames 查找元素
+            for frame in browser_manager.page.frames:
+                try:
+                    if frame.is_detached():
+                        continue
+                    element = await frame.query_selector(f'[data-ai-id="{element_id}"]')
+                    if element:
+                        target_frame = frame
+                        break
+                except Exception:
+                    continue
+            
+            if not target_frame:
+                return {"error": f"未找到 ID 为 {element_id} 的元素。"}
+            
+            # 获取视频元素信息
+            result = await target_frame.evaluate(f"""
+                () => {{
+                    const el = document.querySelector('[data-ai-id="{element_id}"]');
+                    if (!el) return {{ error: '未找到元素' }};
+                    
+                    const tagName = el.tagName.toLowerCase();
+                    
+                    // 检查是否为 video 标签
+                    if (tagName === 'video') {{
+                        // 优先获取 currentSrc，其次 src
+                        let src = el.currentSrc || el.src || el.getAttribute('src');
+                        
+                        // 如果是 blob URL，尝试从 source 标签获取
+                        if (!src || src.startsWith('blob:')) {{
+                            const sourceEl = el.querySelector('source');
+                            if (sourceEl) {{
+                                src = sourceEl.src || sourceEl.getAttribute('src');
+                            }}
+                        }}
+                        
+                        // 尝试从 data 属性获取
+                        if (!src || src.startsWith('blob:')) {{
+                            src = el.getAttribute('data-src') ||
+                                  el.getAttribute('data-video-src') ||
+                                  el.getAttribute('data-url');
+                        }}
+                        
+                        return {{
+                            src: src || null,
+                            poster: el.poster || null,
+                            filename: src ? src.split('/').pop().split('?')[0] : null,
+                            duration: el.duration || null,
+                            tagName: tagName,
+                            isBlob: src ? src.startsWith('blob:') : false
+                        }};
+                    }}
+                    
+                    // 检查是否为 iframe 包含视频播放器
+                    if (tagName === 'iframe') {{
+                        return {{
+                            error: '该元素是 iframe 嵌入的视频播放器。请尝试获取 iframe 内的视频元素，或直接使用视频源地址。',
+                            tagName: tagName
+                        }};
+                    }}
+                    
+                    // 检查子元素中是否有 video
+                    const childVideo = el.querySelector('video');
+                    if (childVideo) {{
+                        let src = childVideo.currentSrc || childVideo.src;
+                        if (!src || src.startsWith('blob:')) {{
+                            const sourceEl = childVideo.querySelector('source');
+                            if (sourceEl) {{
+                                src = sourceEl.src;
+                            }}
+                        }}
+                        return {{
+                            src: src || null,
+                            poster: childVideo.poster || null,
+                            filename: src ? src.split('/').pop().split('?')[0] : null,
+                            tagName: 'video',
+                            isBlob: src ? src.startsWith('blob:') : false
+                        }};
+                    }}
+                    
+                    return {{
+                        error: `该元素不是视频元素 (实际类型: ${{tagName}})。请选择页面上的 video 元素。`,
+                        tagName: tagName
+                    }};
+                }}
+            """)
+            
+            # 处理 blob URL
+            if result.get("isBlob"):
+                return {"error": "该视频使用了 blob URL，无法直接下载。请尝试使用其他方式获取视频，或查找视频的真实源地址。"}
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Failed to get video from element {element_id}: {e}")
+            return {"error": f"获取视频信息失败: {e}"}
 
     # --- Bilibili Helper Methods ---
 

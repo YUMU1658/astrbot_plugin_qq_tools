@@ -119,8 +119,8 @@
         "default": false
       },
       "browser": {
-        "description": "网页浏览 (browser_open, browser_click 等)",
-        "hint": "允许AstrBot使用内置浏览器浏览网页（需 Playwright 环境）",
+        "description": "网页浏览 (browser_open, browser_grid 等)",
+        "hint": "允许AstrBot使用内置浏览器浏览网页（需 Playwright 和 Pillow 环境）",
         "type": "bool",
         "default": false
       },
@@ -390,6 +390,22 @@
         "description": "浏览器视口高度",
         "default": 720
       },
+      "post_action_wait_ms": {
+        "type": "int",
+        "description": "交互后等待时间（毫秒）",
+        "hint": "点击、输入、滚动等交互操作完成后，在截图前等待的时间。确保页面状态更新完成。范围：100-2000ms",
+        "default": 500,
+        "minimum": 100,
+        "maximum": 2000
+      },
+      "user_screenshot_wait_ms": {
+        "type": "int",
+        "description": "用户截图前等待时间（毫秒）",
+        "hint": "browser_screenshot 工具发送截图给用户前的等待时间。确保页面完全加载。范围：100-2000ms",
+        "default": 500,
+        "minimum": 100,
+        "maximum": 2000
+      },
       "mark_mode": {
         "type": "string",
         "description": "标签渲染模式",
@@ -431,6 +447,12 @@
           "type": "string",
           "description": "允许的域名，如 example.com 或 *.example.com"
         }
+      },
+      "default_grid_step": {
+        "type": "float",
+        "description": "网格工具默认间距",
+        "hint": "0.05-0.25之间，默认0.1 (10%)",
+        "default": 0.1
       },
       "blocked_domains": {
         "type": "list",

@@ -113,6 +113,15 @@ class BrowserManager:
         self.allowed_domains: List[str] = []  # 域名白名单
         self.blocked_domains: List[str] = []  # 域名黑名单
         self._url_validator: Optional[URLValidator] = None
+        
+        # 等待配置
+        self.post_action_wait_ms: int = 500  # 交互后等待时间(毫秒)
+        self.user_screenshot_wait_ms: int = 500  # 用户截图前等待时间(毫秒)
+        
+        # 待发送给用户的截图（用于二次确认发送）
+        # 由于 browser 会话本身是互斥的（同一时间只有一个用户持有控制权），这里使用单份缓存即可。
+        self._pending_user_screenshot: Optional[bytes] = None
+        self._pending_user_screenshot_meta: Dict[str, Any] = {}
     
     def configure(
         self,
@@ -126,7 +135,10 @@ class BrowserManager:
         # 安全配置
         allow_private_network: bool = False,
         allowed_domains: Optional[List[str]] = None,
-        blocked_domains: Optional[List[str]] = None
+        blocked_domains: Optional[List[str]] = None,
+        # 等待配置
+        post_action_wait_ms: int = 500,
+        user_screenshot_wait_ms: int = 500
     ):
         """配置浏览器参数
         
@@ -141,6 +153,8 @@ class BrowserManager:
             allow_private_network: 是否允许访问私有网络（默认 False，禁止 SSRF）
             allowed_domains: 域名白名单（可选，支持通配符如 *.example.com）
             blocked_domains: 域名黑名单（可选）
+            post_action_wait_ms: 交互后等待时间（毫秒）
+            user_screenshot_wait_ms: 用户截图前等待时间（毫秒）
         """
         self.timeout_seconds = timeout_seconds
         self.viewport_width = viewport_width
@@ -154,6 +168,10 @@ class BrowserManager:
         self.allow_private_network = allow_private_network
         self.allowed_domains = allowed_domains or []
         self.blocked_domains = blocked_domains or []
+        
+        # 等待配置
+        self.post_action_wait_ms = post_action_wait_ms
+        self.user_screenshot_wait_ms = user_screenshot_wait_ms
         
         # 重建 URL 验证器
         self._url_validator = URLValidator(
@@ -361,6 +379,28 @@ class BrowserManager:
         script = script.replace('{{MARK_MODE}}', self.mark_mode)
         
         return script
+    
+    async def _wait_after_action(self, wait_network_idle: bool = True) -> None:
+        """交互操作后的统一等待策略
+        
+        在点击、输入、滚动等交互操作后调用，确保页面状态更新完成。
+        
+        Args:
+            wait_network_idle: 是否尝试等待网络空闲（默认 True）
+        """
+        if not self.page:
+            return
+        
+        # 1. 固定等待时间（配置的交互后等待）
+        await asyncio.sleep(self.post_action_wait_ms / 1000.0)
+        
+        # 2. 可选：尝试等待网络空闲（最多再等5秒）
+        if wait_network_idle:
+            try:
+                await self.page.wait_for_load_state('networkidle', timeout=5000)
+            except:
+                # 超时不影响流程，继续执行
+                pass
     
     async def get_marked_screenshot(self) -> Tuple[Optional[bytes], str]:
         """获取带有元素标记的页面截图（支持跨 Frame）
@@ -574,14 +614,8 @@ class BrowserManager:
             # 点击元素
             await target_element.click()
             
-            # 等待页面响应
-            await asyncio.sleep(1)
-            
-            # 尝试等待网络空闲
-            try:
-                await self.page.wait_for_load_state('networkidle', timeout=5000)
-            except:
-                pass
+            # 统一等待策略
+            await self._wait_after_action()
             
             # 获取标记截图
             screenshot, info = await self.get_marked_screenshot()
@@ -614,17 +648,11 @@ class BrowserManager:
             
             # 移动鼠标并点击
             await self.page.mouse.move(x, y)
-            await asyncio.sleep(0.1) # 短暂亦顿，模拟人类行为
+            await asyncio.sleep(0.1)  # 短暂停顿，模拟人类行为
             await self.page.mouse.click(x, y)
             
-            # 等待页面响应
-            await asyncio.sleep(1)
-            
-            # 尝试等待网络空闲
-            try:
-                await self.page.wait_for_load_state('networkidle', timeout=5000)
-            except:
-                pass
+            # 统一等待策略
+            await self._wait_after_action()
             
             # 获取标记截图
             screenshot, info = await self.get_marked_screenshot()
@@ -644,8 +672,8 @@ class BrowserManager:
             # 直接输入文本
             await self.page.keyboard.type(text, delay=20)
             
-            # 等待一下
-            await asyncio.sleep(0.5)
+            # 统一等待策略(输入后不需要等待网络空闲)
+            await self._wait_after_action(wait_network_idle=False)
             
             # 获取标记截图
             screenshot, info = await self.get_marked_screenshot()
@@ -780,8 +808,8 @@ class BrowserManager:
                 
                 return None, error_msg
             
-            # 等待一下
-            await asyncio.sleep(0.5)
+            # 统一等待策略(输入后不需要等待网络空闲)
+            await self._wait_after_action(wait_network_idle=False)
             
             # 获取标记截图
             screenshot, info = await self.get_marked_screenshot()
@@ -811,8 +839,8 @@ class BrowserManager:
             else:
                 return None, f"不支持的滚动方向: {direction}。支持: up, down, top, bottom"
             
-            # 等待滚动完成
-            await asyncio.sleep(0.5)
+            # 统一等待策略(滚动后不需要等待网络空闲)
+            await self._wait_after_action(wait_network_idle=False)
             
             # 获取标记截图
             screenshot, info = await self.get_marked_screenshot()
@@ -959,6 +987,160 @@ class BrowserManager:
                 pass
             return None, f"元素截图失败: {e}"
     
+    async def click_relative(self, rx: float, ry: float) -> Tuple[Optional[bytes], str]:
+        """点击页面上的相对坐标
+        
+        Args:
+            rx: 相对 X 坐标 (0.0 ~ 1.0)
+            ry: 相对 Y 坐标 (0.0 ~ 1.0)
+            
+        Returns:
+            Tuple[Optional[bytes], str]: (截图数据, 状态信息)
+        """
+        if not self.page:
+            return None, "浏览器未初始化。"
+        
+        try:
+            viewport = self.page.viewport_size
+            if not viewport:
+                return None, "无法获取视口大小"
+            
+            width = viewport['width']
+            height = viewport['height']
+            
+            # 限制范围
+            rx = max(0.0, min(1.0, rx))
+            ry = max(0.0, min(1.0, ry))
+            
+            # 计算绝对坐标
+            x = int(width * rx)
+            y = int(height * ry)
+            
+            # 移动鼠标并点击
+            await self.page.mouse.move(x, y)
+            await asyncio.sleep(0.1)
+            await self.page.mouse.click(x, y)
+            
+            # 统一等待策略
+            await self._wait_after_action()
+            
+            # 获取标记截图
+            screenshot, info = await self.get_marked_screenshot()
+            
+            return screenshot, f"已点击相对位置 ({rx:.2f}, {ry:.2f}) -> 绝对坐标 ({x}, {y})。{info}"
+            
+        except Exception as e:
+            logger.error(f"Failed to click relative ({rx}, {ry}): {e}")
+            return None, f"相对点击失败: {e}"
+
+    async def get_grid_overlay_screenshot(self, grid_step: float = 0.1) -> Tuple[Optional[bytes], str]:
+        """获取带有网格叠加的截图
+        
+        用于帮助用户和 LLM 估算相对坐标。
+        
+        Args:
+            grid_step: 网格间距 (0.0~1.0)，默认 0.1 (10%)
+            
+        Returns:
+            Tuple[Optional[bytes], str]: (截图数据, 状态信息)
+        """
+        if not self.page:
+            return None, "浏览器未初始化。"
+        
+        try:
+            # 1. 获取干净的页面截图 (不含标记)
+            # 隐藏所有 Frame 的标记
+            for frame in self.page.frames:
+                try:
+                    if not frame.is_detached():
+                        await frame.evaluate("""
+                            () => {
+                                document.querySelectorAll('.ai-mark').forEach(e => e.style.display = 'none');
+                            }
+                        """)
+                except:
+                    pass
+            
+            try:
+                screenshot_bytes = await self.page.screenshot(type='png', scale='css')
+            except TypeError:
+                screenshot_bytes = await self.page.screenshot(type='png')
+                
+            # 恢复标记
+            for frame in self.page.frames:
+                try:
+                    if not frame.is_detached():
+                        await frame.evaluate("""
+                            () => {
+                                document.querySelectorAll('.ai-mark').forEach(e => e.style.display = '');
+                            }
+                        """)
+                except:
+                    pass
+            
+            # 2. 使用 PIL 绘制网格
+            try:
+                from PIL import Image, ImageDraw, ImageFont, ImageColor
+                import io
+                
+                img = Image.open(io.BytesIO(screenshot_bytes))
+                draw = ImageDraw.Draw(img, 'RGBA') # 使用 RGBA 模式以支持透明度
+                width, height = img.size
+                
+                # 网格配置
+                grid_color = (255, 0, 0, 128)  # 红色，半透明
+                text_color = (255, 0, 0, 255)  # 红色，不透明
+                font_size = max(12, int(min(width, height) * 0.02))
+                
+                try:
+                    font = ImageFont.truetype("arial.ttf", font_size)
+                except IOError:
+                    try:
+                        font = ImageFont.load_default()
+                    except:
+                        font = None
+
+                # 绘制网格线和坐标
+                step_x = int(width * grid_step)
+                step_y = int(height * grid_step)
+                
+                # 垂直线 (X轴)
+                for i in range(1, int(1/grid_step)):
+                    x = i * step_x
+                    val = i * grid_step
+                    draw.line([(x, 0), (x, height)], fill=grid_color, width=2)
+                    # 坐标标签
+                    label = f"{val:.1f}"
+                    if font:
+                        # 简单的阴影效果，增加可读性
+                        draw.text((x + 2, 5), label, fill=(255, 255, 255, 200), font=font)
+                        draw.text((x, 5), label, fill=text_color, font=font)
+                
+                # 水平线 (Y轴)
+                for i in range(1, int(1/grid_step)):
+                    y = i * step_y
+                    val = i * grid_step
+                    draw.line([(0, y), (width, y)], fill=grid_color, width=2)
+                    # 坐标标签
+                    label = f"{val:.1f}"
+                    if font:
+                        draw.text((5, y + 2), label, fill=(255, 255, 255, 200), font=font)
+                        draw.text((5, y), label, fill=text_color, font=font)
+                
+                output = io.BytesIO()
+                img.save(output, format='PNG')
+                return output.getvalue(), "已生成网格覆盖图。坐标轴显示了相对位置 (0.0-1.0)。"
+                
+            except ImportError:
+                return None, "生成网格失败: 未安装 Pillow 库。请运行 `pip install Pillow`。"
+            except Exception as e:
+                logger.error(f"Error drawing grid: {e}")
+                return None, f"绘制网格失败: {e}"
+                
+        except Exception as e:
+            logger.error(f"Failed to get grid screenshot: {e}")
+            return None, f"获取网格截图失败: {e}"
+
     async def click_in_element(self, element_id: int, rx: float, ry: float) -> Tuple[Optional[bytes], str]:
         """在指定元素内的相对位置点击（跨 Frame 查找）
         
@@ -1016,14 +1198,8 @@ class BrowserManager:
             await asyncio.sleep(0.1)  # 短暂停顿，模拟人类行为
             await self.page.mouse.click(abs_x, abs_y)
             
-            # 等待页面响应
-            await asyncio.sleep(1)
-            
-            # 尝试等待网络空闲
-            try:
-                await self.page.wait_for_load_state('networkidle', timeout=5000)
-            except:
-                pass
+            # 统一等待策略
+            await self._wait_after_action()
             
             # 获取标记截图
             screenshot, info = await self.get_marked_screenshot()
