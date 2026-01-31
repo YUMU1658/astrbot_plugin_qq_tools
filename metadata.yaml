@@ -1,5 +1,5 @@
 name: astrbot_plugin_qq_tools
-version: v0.1.3
+version: v0.1.4
 author: YUMU1658
 desc: "为 AstrBot 提供 QQ 平台（OneBot / aiocqhttp）特定的工具集：引用回复、撤回消息、检索最近消息、群管理、头像查看、网页浏览（Playwright）、视频分析（Gemini）、以及「定时唤醒」等能力。\n让机器人在 QQ 场景下的“动手能力”更强，增强自主性。"
 repo: https://github.com/YUMU1658/astrbot_plugin_qq_tools
