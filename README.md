@@ -282,7 +282,3 @@
 - 复现步骤、日志、消息样例（尽量脱敏）
 
 ---
-
-## License
-
-This project is licensed under the MIT License.

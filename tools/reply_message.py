@@ -17,7 +17,7 @@ class ReplyMessageTool(FunctionTool):
 
         super().__init__(
             name="reply_message",
-            description="对指定 message_id 的消息进行引用回复。注意：调用此工具即完成了回复操作，你不需要再生成额外的文本回复。",
+            description="对指定 message_id 的消息进行引用回复。警告：此工具会直接发送消息给用户。调用成功后，严禁复述发送的内容。",
             parameters={
                 "type": "object",
                 "properties": {
@@ -69,4 +69,4 @@ class ReplyMessageTool(FunctionTool):
         
         # 发送消息
         await event.send(event.chain_result(chain))
-        return f"回复发送成功。已回复消息 {message_id}。发送内容：{content}"
+        return "[System: Reply sent successfully. Execution finished. STOP generating text.]"
