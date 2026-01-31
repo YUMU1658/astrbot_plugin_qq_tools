@@ -4,12 +4,6 @@
     "description": "⚙️ 工具开关 - 启用或禁用特定的工具",
     "default": {},
     "items": {
-      "reply": {
-        "description": "引用回复 (reply_message)",
-        "hint": "允许AstrBot引用特定消息进行回复",
-        "type": "bool",
-        "default": true
-      },
       "repeat": {
         "description": "复读消息 (repeat_message)",
         "hint": "允许AstrBot复读（转发）指定的消息",
@@ -254,6 +248,25 @@
       }
     }
   },
+  "reply_adapter": {
+    "type": "object",
+    "description": "💬 引用回复适配器 - 让 LLM 通过 [REPLY:message_id] 格式输出引用回复",
+    "default": {},
+    "items": {
+      "enable": {
+        "description": "启用引用回复适配器",
+        "hint": "启用后，LLM 输出 [REPLY:message_id]内容 格式时，会自动转换为引用回复消息。每行一个标签代表一条消息，同一消息内换行用 \\\\n 表示。",
+        "type": "bool",
+        "default": false
+      },
+      "prompt": {
+        "description": "提示词注入",
+        "hint": "为空则不注入。非空时会追加到 system_prompt，引导 LLM 使用 [REPLY:id]内容 格式。",
+        "type": "string",
+        "default": "【引用回复格式】当你需要引用回复某条消息时，请在输出中使用：[REPLY:消息ID]你的回复内容。消息ID可从上下文中的 [MSG_ID:xxx] 获取。如果回复内容需要换行，使用 \\n 表示（字面两个字符）。不使用此格式则为普通消息。"
+      }
+    }
+  },
   "compatibility": {
     "type": "object",
     "description": "⚙️ 兼容性相关 - 与其他插件或系统的兼容性设置",
@@ -285,7 +298,7 @@
       },
       "filter_patterns": {
         "description": "回复内容过滤 (Regex)",
-        "hint": "仅过滤 reply_message 工具的回复内容，支持多个正则表达式",
+        "hint": "过滤工具回复内容，支持多个正则表达式",
         "type": "list",
         "default": [
           "&&.*?&&"
@@ -304,7 +317,7 @@
     "items": {
       "admin_only_tools": {
         "description": "仅管理员可用的工具列表",
-        "hint": "这些工具只有 AstrBot 管理员、白名单用户（或群主/管理员，如果启用）才能触发。支持通配符如 browser_*。⚠️ 支持权限控制的工具：ban_user, group_ban, group_mute_all, kick_user, delete_message, change_group_card, send_group_notice, set_essence_message, set_special_title, browser_*, view_video, schedule, manage_wake。其他工具（如 reply_message, get_user_info 等）不支持加入此列表，因为这些工具无危险性或一旦启用就应让 LLM 自由调用。",
+        "hint": "这些工具只有 AstrBot 管理员、白名单用户（或群主/管理员，如果启用）才能触发。支持通配符如 browser_*。⚠️ 支持权限控制的工具：ban_user, group_ban, group_mute_all, kick_user, delete_message, change_group_card, send_group_notice, set_essence_message, set_special_title, browser_*, view_video, schedule, manage_wake。其他工具（如 get_user_info 等）不支持加入此列表，因为这些工具无危险性或一旦启用就应让 LLM 自由调用。",
         "type": "list",
         "default": ["ban_user", "group_ban", "group_mute_all", "kick_user", "delete_message", "change_group_card", "send_group_notice", "set_essence_message", "browser_*"],
         "items": {

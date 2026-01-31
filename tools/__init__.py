@@ -3,7 +3,6 @@ from .delete_message import DeleteMessageTool
 from .get_recent_messages import GetRecentMessagesTool
 from .get_user_info import GetUserInfoTool
 from .refresh_messages import RefreshMessagesTool
-from .reply_message import ReplyMessageTool
 from .stop_conversation import StopConversationTool
 from .change_group_card import ChangeGroupCardTool
 from .ban_user import BanUserTool
@@ -48,7 +47,6 @@ __all__ = [
     "GetRecentMessagesTool",
     "GetUserInfoTool",
     "RefreshMessagesTool",
-    "ReplyMessageTool",
     "StopConversationTool",
     "RepeatMessageTool",
     "ViewAvatarTool",

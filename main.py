@@ -16,7 +16,10 @@ from astrbot.api.platform import AstrBotMessage, MessageMember, MessageType
 # FunctionTool 使用官方 API 导入
 from astrbot.api import FunctionTool
 
-from .utils import parse_at_content, parse_leaked_tool_call, call_onebot
+from .utils import (
+    parse_at_content, parse_leaked_tool_call, call_onebot,
+    has_protocol_b_markers, normalize_message_id
+)
 
 # =============================================
 # 平台事件类注册表
@@ -126,7 +129,6 @@ def get_platform_event_class(platform_name: str) -> Optional[Tuple[Type[AstrMess
         return None
 from .tools.get_user_info import GetUserInfoTool
 from .tools.get_recent_messages import GetRecentMessagesTool
-from .tools.reply_message import ReplyMessageTool
 from .tools.delete_message import DeleteMessageTool
 from .tools.refresh_messages import RefreshMessagesTool
 from .tools.stop_conversation import StopConversationTool
@@ -171,6 +173,7 @@ class QQToolsPlugin(Star):
         self.tool_config = self.config.get("tools", {})
         self.general_config = self.config.get("general", {})
         self.compatibility_config = self.config.get("compatibility", {})
+        self.reply_adapter_config = self.config.get("reply_adapter", {})
         
         # 工具名称前缀配置
         self.add_tool_prefix = self.compatibility_config.get("add_tool_prefix", False)
@@ -203,7 +206,6 @@ class QQToolsPlugin(Star):
         # 注册 FunctionTool
         self._manage_tool("user_info", GetUserInfoTool())
         self._manage_tool("search", GetRecentMessagesTool(self))
-        self._manage_tool("reply", ReplyMessageTool(self))
         self._manage_tool("delete", DeleteMessageTool(self))
         self._manage_tool("refresh", RefreshMessagesTool(self))
         self._manage_tool("stop", StopConversationTool())
@@ -1593,8 +1595,13 @@ class QQToolsPlugin(Star):
     @filter.on_decorating_result()
     async def on_decorating_result(self, event: AstrMessageEvent):
         """
-        在消息发送前进行处理，将 [At:123456] 转换为真实的 At 消息组件。
-        同时支持消息内容过滤。
+        在消息发送前进行处理：
+        1. 引用回复转换：检测 [REPLY:...] 标记并转换为 Reply 组件
+        2. [At:123456] 转换为真实的 At 消息组件
+        3. 消息内容过滤
+        
+        重要：此方法只负责转换消息组件，不接管发送流程。
+        让 AstrBot 的 RespondStage 正常处理分段发送等逻辑。
         """
         # 仅针对 QQ 平台 (Aiocqhttp)
         # 使用延迟导入避免硬编码依赖
@@ -1610,13 +1617,19 @@ class QQToolsPlugin(Star):
         if not result or not result.chain:
             return
 
+        # =============================================
+        # 引用回复转换逻辑（只转换，不接管发送）
+        # =============================================
+        enable_reply_adapter = self.reply_adapter_config.get("enable", False)
         enable_at_conversion = self.general_config.get("enable_auto_at_conversion", False)
         msg_filter_patterns = self.general_config.get("message_filter_patterns", [])
 
-        if not enable_at_conversion and not msg_filter_patterns:
+        # 如果没有任何功能启用，直接返回
+        if not enable_reply_adapter and not enable_at_conversion and not msg_filter_patterns:
             return
 
         new_chain = []
+        
         for component in result.chain:
             if isinstance(component, Comp.Plain) and component.text:
                 current_text = component.text
@@ -1631,30 +1644,69 @@ class QQToolsPlugin(Star):
                 
                 if not current_text:
                     continue
-
-                # 1. 尝试解析泄露的工具调用
-                is_leaked_tool = False
-                if self.compatibility_config.get("fix_tool_leak", True):
-                    filter_patterns = self.compatibility_config.get("filter_patterns", ["&&.*?&&"])
-                    content, message_id = parse_leaked_tool_call(current_text, filter_patterns=filter_patterns)
-                    
-                    if content is not None and message_id is not None:
-                        # 解析成功，构造 Reply 和 Content
-                        logger.warning(f"Detected leaked tool call in text. Fixing... ID: {message_id}, Content: {content}")
-                        new_chain.append(Comp.Reply(id=message_id))
-                        # 对提取出的内容再进行 At 解析
-                        if enable_at_conversion:
-                            new_chain.extend(parse_at_content(content))
+                
+                # 1. 引用回复标签转换
+                # 格式：[REPLY:message_id]内容
+                # 同一消息内换行使用 \n（字面量）
+                if enable_reply_adapter and has_protocol_b_markers(current_text):
+                    # 按行处理，每行可能是一个 [REPLY:...] 标签
+                    lines = current_text.split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        
+                        # 匹配 [REPLY:message_id]内容 格式
+                        reply_match = re.match(r'\[REPLY:([^\]]+)\](.*)', line)
+                        if reply_match:
+                            msg_id = reply_match.group(1).strip()
+                            content = reply_match.group(2)
+                            
+                            # 规范化 message_id
+                            msg_id = normalize_message_id(msg_id)
+                            
+                            # 将 \n（字面量两个字符）转换为真实换行
+                            content = content.replace('\\n', '\n')
+                            
+                            # 添加 Reply 组件
+                            new_chain.append(Comp.Reply(id=msg_id))
+                            
+                            # 添加内容（支持 At 转换）
+                            if content.strip():
+                                if enable_at_conversion:
+                                    new_chain.extend(parse_at_content(content))
+                                else:
+                                    new_chain.append(Comp.Plain(content))
                         else:
-                            new_chain.append(Comp.Plain(content))
-                        is_leaked_tool = True
+                            # 普通行（不带引用标签）
+                            if enable_at_conversion:
+                                new_chain.extend(parse_at_content(line))
+                            else:
+                                new_chain.append(Comp.Plain(line))
+                else:
+                    # 2. 尝试解析泄露的工具调用
+                    is_leaked_tool = False
+                    if self.compatibility_config.get("fix_tool_leak", True):
+                        filter_patterns = self.compatibility_config.get("filter_patterns", ["&&.*?&&"])
+                        content, message_id = parse_leaked_tool_call(current_text, filter_patterns=filter_patterns)
+                        
+                        if content is not None and message_id is not None:
+                            # 解析成功，构造 Reply 和 Content
+                            logger.warning(f"Detected leaked tool call in text. Fixing... ID: {message_id}, Content: {content}")
+                            new_chain.append(Comp.Reply(id=message_id))
+                            # 对提取出的内容再进行 At 解析
+                            if enable_at_conversion:
+                                new_chain.extend(parse_at_content(content))
+                            else:
+                                new_chain.append(Comp.Plain(content))
+                            is_leaked_tool = True
 
-                if not is_leaked_tool:
-                    # 2. 常规解析 At
-                    if enable_at_conversion:
-                        new_chain.extend(parse_at_content(current_text))
-                    else:
-                        new_chain.append(Comp.Plain(current_text))
+                    if not is_leaked_tool:
+                        # 3. 常规解析 At
+                        if enable_at_conversion:
+                            new_chain.extend(parse_at_content(current_text))
+                        else:
+                            new_chain.append(Comp.Plain(current_text))
             else:
                 new_chain.append(component)
         
@@ -1662,7 +1714,49 @@ class QQToolsPlugin(Star):
 
         if not new_chain:
             event.stop_event()
-            logger.info("Message chain is empty after filtering. Event stopped.")
+            logger.debug("Message chain is empty after filtering. Event stopped.")
+
+    @filter.on_llm_request()
+    async def on_llm_request(self, event: AstrMessageEvent, req):
+        """在 LLM 请求时注入引用回复引导提示词
+        
+        仅当以下条件同时满足时才注入：
+        1. 引用回复适配器已启用 (enable=true)
+        2. 提示词配置非空 (prompt 不为空字符串)
+        
+        Args:
+            event: 消息事件
+            req: ProviderRequest 对象
+        """
+        try:
+            # 检查是否启用引用回复适配器
+            enable_adapter = self.reply_adapter_config.get("enable", False)
+            if not enable_adapter:
+                return
+            
+            # 获取提示词配置，为空则不注入
+            prompt = self.reply_adapter_config.get("prompt", "")
+            if not prompt or not prompt.strip():
+                return
+            
+            prompt = prompt.strip()
+            
+            # 注入到 system_prompt
+            if hasattr(req, 'system_prompt'):
+                current_prompt = getattr(req, 'system_prompt', '') or ''
+                if current_prompt.strip():
+                    # 在现有 system_prompt 后追加
+                    req.system_prompt = f"{current_prompt}\n\n{prompt}"
+                else:
+                    # system_prompt 为空，直接设置
+                    req.system_prompt = prompt
+            else:
+                logger.warning("ProviderRequest has no 'system_prompt' attribute, cannot inject prompt.")
+            
+        except Exception as e:
+            logger.error(f"Error injecting reply adapter prompt: {e}")
+            import traceback
+            traceback.print_exc()
 
     @filter.after_message_sent()
     async def on_after_message_sent(self, event: AstrMessageEvent):

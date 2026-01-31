@@ -8,7 +8,7 @@ class StopConversationTool(FunctionTool):
     def __init__(self):
         super().__init__(
             name="stop_conversation",
-            description="立即结束当前对话轮次。当你认为任务已完成、无需进一步回复，或已经通过工具（如 reply_message）发送了响应时，调用此工具以停止输出。",
+            description="立即结束当前对话轮次。当你认为任务已完成、无需进一步回复，或已通过其他方式发送了响应时，调用此工具以停止输出。",
             parameters={
                 "type": "object",
                 "properties": {},

@@ -410,3 +410,54 @@ def get_original_tool_name(tool_name: str, has_prefix: bool) -> str:
     if has_prefix and tool_name.startswith("qts_"):
         return tool_name[4:]
     return tool_name
+
+
+# =============================================
+# 引用回复辅助函数
+# =============================================
+
+
+def normalize_message_id(msg_id: str) -> str:
+    """规范化消息ID
+    
+    处理各种可能的 message_id 格式：
+    - [MSG_ID:xxx] -> xxx
+    - 纯数字 -> 保持原样
+    - 复合ID如 12345_6789 -> 保持原样
+    
+    Args:
+        msg_id: 原始消息ID字符串
+        
+    Returns:
+        str: 规范化后的消息ID
+    """
+    if not msg_id:
+        return msg_id
+    
+    msg_id = msg_id.strip()
+    
+    # 去除 [MSG_ID:...] 包装
+    if msg_id.startswith('[MSG_ID:') and msg_id.endswith(']'):
+        msg_id = msg_id[8:-1].strip()
+    elif msg_id.startswith('MSG_ID:'):
+        msg_id = msg_id[7:].strip()
+    
+    return msg_id
+
+
+def has_protocol_b_markers(text: str) -> bool:
+    """检查文本中是否包含引用回复标记
+    
+    用于快速判断是否需要进行引用回复转换。
+    
+    Args:
+        text: 要检查的文本
+        
+    Returns:
+        bool: 是否包含至少一个 [REPLY:...] 标记
+    """
+    if not text:
+        return False
+    
+    # 简单的正则检查，比完整解析更高效
+    return bool(re.search(r'\[REPLY:[^\]]+\]', text))
