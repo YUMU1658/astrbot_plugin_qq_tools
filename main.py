@@ -18,7 +18,7 @@ from astrbot.api import FunctionTool
 
 from .utils import (
     parse_at_content, parse_leaked_tool_call, call_onebot,
-    has_protocol_b_markers, normalize_message_id
+    has_reply_markers, normalize_message_id
 )
 
 # =============================================
@@ -1648,7 +1648,7 @@ class QQToolsPlugin(Star):
                 # 1. 引用回复标签转换
                 # 格式：[REPLY:message_id]内容
                 # 同一消息内换行使用 \n（字面量）
-                if enable_reply_adapter and has_protocol_b_markers(current_text):
+                if enable_reply_adapter and has_reply_markers(current_text):
                     # 按行处理，每行可能是一个 [REPLY:...] 标签
                     lines = current_text.split('\n')
                     for line in lines:

@@ -445,7 +445,7 @@ def normalize_message_id(msg_id: str) -> str:
     return msg_id
 
 
-def has_protocol_b_markers(text: str) -> bool:
+def has_reply_markers(text: str) -> bool:
     """检查文本中是否包含引用回复标记
     
     用于快速判断是否需要进行引用回复转换。
