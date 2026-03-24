@@ -379,6 +379,12 @@
         "description": "图像描述提示词",
         "hint": "调用模型描述图片时使用的提示词。",
         "default": "请详细描述这个头像图片的内容，包括人物特征、风格、颜色等。"
+      },
+      "inject_as_base64": {
+        "type": "bool",
+        "description": "以 Base64 形式注入图片",
+        "hint": "若模型 API 报错 \"unsupported image url\" 时可启用。启用后，插件会先下载图片并转为 Base64 数据再注入 LLM 上下文。关闭则直接注入图片 URL（更快，但部分模型 API 可能不支持）。注意：下载失败时会自动回退到 URL 注入。",
+        "default": false
       }
     }
   },
