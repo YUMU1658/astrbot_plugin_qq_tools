@@ -1,3 +1,5 @@
+import base64
+import aiohttp
 from astrbot.api import logger
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
@@ -67,17 +69,48 @@ class ViewAvatarTool(FunctionTool):
             # 默认：插入上下文让 LLM 直接看图
             return await self._inject_to_context(context, user_id, avatar_url)
 
+    async def _download_as_base64(self, url: str) -> tuple[str | None, str | None]:
+        """下载图片并转为 base64 data URL
+
+        Returns:
+            (data_url, None) on success, (None, error_message) on failure
+        """
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        return None, f"HTTP {resp.status}"
+                    content_type = resp.content_type or "image/png"
+                    if not content_type.startswith("image/"):
+                        content_type = "image/png"
+                    image_data = await resp.read()
+            b64 = base64.b64encode(image_data).decode("utf-8")
+            return f"data:{content_type};base64,{b64}", None
+        except Exception as e:
+            return None, str(e)
+
     async def _inject_to_context(self, context: ContextWrapper[AstrAgentContext], user_id: str, avatar_url: str) -> str:
         """将头像图片注入到 LLM 上下文中"""
         try:
             # 获取会话历史 (context.messages 是 ContextWrapper 的 messages 字段)
             messages = context.messages
-            
+
             if messages:
+                # 根据配置决定注入 URL 还是 base64
+                inject_as_base64 = self.config.get("inject_as_base64", False)
+
+                if inject_as_base64:
+                    img_url, err = await self._download_as_base64(avatar_url)
+                    if err:
+                        logger.warning(f"下载头像转 base64 失败: {err}，回退到 URL 注入")
+                        img_url = avatar_url
+                else:
+                    img_url = avatar_url
+
                 # 构造一个图片组件
                 img_part = ImageURLPart(
                     image_url=ImageURLPart.ImageURL(
-                        url=avatar_url,
+                        url=img_url,
                         id=f"avatar_{user_id}"
                     )
                 )
