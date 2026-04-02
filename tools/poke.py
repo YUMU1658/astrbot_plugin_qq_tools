@@ -37,8 +37,8 @@ class PokeTool(FunctionTool):
         # 从配置读取是否返回戳一戳文案（默认启用）
         return_poke_info = True
         if self.plugin:
-            general_config = self.plugin.config.get("general", {})
-            return_poke_info = general_config.get("poke_return_info", True)
+            advanced_config = self.plugin.config.get("advanced", {})
+            return_poke_info = advanced_config.get("poke_return_info", True)
         
         event = context.context.event
         

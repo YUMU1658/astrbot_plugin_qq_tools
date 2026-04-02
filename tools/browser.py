@@ -301,7 +301,10 @@ class BrowserGridOverlayTool(FunctionTool):
         self.plugin = plugin_instance
     
     async def call(self, context: ContextWrapper[AstrAgentContext], **kwargs) -> ToolExecResult:
-        grid_step = kwargs.get("grid_step", 0.1)
+        # 从配置读取默认网格间距（fallback 与 _conf_schema.json 中 default_grid_step 一致）
+        config = self.plugin.config.get("browser_config", {}) if self.plugin else {}
+        default_step = config.get("default_grid_step", 0.1)
+        grid_step = kwargs.get("grid_step", default_step)
         
         event = context.context.event
         user_id = event.get_sender_id()

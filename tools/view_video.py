@@ -119,13 +119,13 @@ class ViewVideoTool(FunctionTool):
         if not api_key:
             return "❌ 插件配置错误：未配置 Gemini API Key\n💡 提示: 请联系管理员在插件配置的 gemini_video_config 中填写 api_key。"
         
-        # 获取配置项
+        # 获取配置项（fallback 值与 _conf_schema.json 中的 default 保持一致）
         api_url = self.config.get("api_url", "https://generativelanguage.googleapis.com").rstrip('/')
-        model_id = self.config.get("model_id", "gemini-1.5-flash")
-        size_limit_mb = self.config.get("size_limit", 256)
-        duration_limit = self.config.get("duration_limit", 1200)
-        prompt = self.config.get("prompt", "请详细描述这个视频的内容。")
-        timeout = self.config.get("timeout", 360)
+        model_id = self.config.get("model_id", "gemini-3-flash-preview")
+        size_limit_mb = self.config.get("size_limit", 50)
+        duration_limit = self.config.get("duration_limit", 300)
+        prompt = self.config.get("prompt", "请描述视频内容")
+        timeout = self.config.get("timeout", 120)
         upload_mode = self.config.get("upload_mode", "file_api")
         bilibili_quality_conf = self.config.get("bilibili_quality", "fluent")
         

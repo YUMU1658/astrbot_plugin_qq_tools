@@ -5,6 +5,12 @@
 
 ---
 
+## 🚨 v0.2.0 更新提示
+
+> **⚠️ 本次更新对配置文件结构进行了调整，升级后部分配置项将恢复为默认值。请在更新前备份好原配置文件（`_conf_schema.json` 对应的配置数据），或在更新后重新检查并调整各项设置。**
+
+---
+
 ## ⚠️ 重要声明（请务必阅读）
 
 1. **本插件基本全利用 AI 完成编写**（包括逻辑组织与大量代码片段）。  
@@ -100,7 +106,7 @@
 ## 🧰 工具列表（LLM 可调用）
 
 > 工具是给 LLM 调用的“函数”。你在 QQ 里只需要自然语言发指令，模型会自动选择是否调用工具。  
-> 如果你开启了 `compatibility.add_tool_prefix=true`，则所有工具名会加 `qts_` 前缀以避免冲突。
+> 如果你开启了 `advanced.compatibility.add_tool_prefix=true`，则所有工具名会加 `qts_` 前缀以避免冲突。
 
 ### 基础消息工具
 | 工具名 | 作用 | 典型用途 |
@@ -111,6 +117,7 @@
 | `delete_message` | 撤回消息 | "撤回我上一条" |
 | `stop_conversation` | 结束对话 | "停止/结束本次任务" |
 | `get_message_detail` | 获取消息结构详情 | "这条消息里到底有什么？把图片也看一下" |
+| `get_group_member_list` | 获取群成员列表 | "群里都有谁？列一下成员" |
 
 ### QQ/群相关工具
 | 工具名 | 作用 |
@@ -126,7 +133,7 @@
 | `set_special_title` | 设头衔 |
 | `ban_user` | AstrBot 黑名单（非 QQ 黑名单） |
 
-### 网页浏览工具（需开启 `tools.browser=true`）
+### 网页浏览工具（需开启 `browser_config.browser=true`）
 | 工具名 | 作用 |
 |---|---|
 | `browser_open` | 打开网页并生成带标记截图（注入视觉上下文） |
@@ -144,7 +151,7 @@
 | `browser_close` | 关闭浏览器会话 |
 | `browser_send_image` | 发送页面图片给用户（QQ） |
 
-### 视频分析工具（需开启 `tools.view_video=true`）
+### 视频分析工具（需开启 `gemini_video_config.view_video=true`）
 | 工具名 | 作用 |
 |---|---|
 | `view_video` | 解析并分析视频（B站 / QQ视频消息） |
@@ -184,7 +191,7 @@
 - "**撤回**我刚才那条消息。"
 - "把最近三条消息都撤回。"
 
-> 小技巧：开启 `general.show_message_id=true` 后，机器人发送的消息会自动附带 `[MSG_ID:xxxx]`，便于模型精准引用/撤回。
+> 小技巧：开启 `context_enhance.show_message_id=true` 后，机器人发送的消息会自动附带 `[MSG_ID:xxxx]`，便于模型精准引用/撤回。
 
 ### 2) 让机器人“查上下文”
 - “你能**回顾一下最近 20 条消息**吗？”  
@@ -256,7 +263,7 @@
 
 ### 4) 工具名冲突：前缀机制
 如果你装了多个插件，可能存在工具重名。  
-开启 `compatibility.add_tool_prefix=true` 后，本插件工具将全部变为 `qts_***`，同时自动清理旧名称残留（可用 `disable_auto_uninstall` 控制）。
+开启 `advanced.compatibility.add_tool_prefix=true` 后，本插件工具将全部变为 `qts_***`，同时自动清理旧名称残留（可用 `advanced.compatibility.disable_auto_uninstall` 控制）。
 
 ---
 
@@ -280,9 +287,9 @@
 - 某些实现返回的 `message_id` 形态不同（如 `12345_6789`），本插件已做多种兼容尝试，但仍可能失败
 
 ### Q2：模型找不到消息 ID，无法引用/撤回？
-- 确保 `general.show_message_id=true`
+- 确保 `context_enhance.show_message_id=true`
 - 或让模型先调用 `get_recent_messages` 获取历史消息并提取 ID
-- 若担心 `[MSG_ID:xxx]` 进入长期记忆，可开启 `compatibility.delay_append_msg_id=true`
+- 若担心 `[MSG_ID:xxx]` 进入长期记忆，可开启 `advanced.compatibility.delay_append_msg_id=true`
 
 
 ### Q3：浏览器工具无法使用/报 Playwright 错误？
@@ -291,7 +298,7 @@
   pip install playwright Pillow
   playwright install chromium
   ```
-- 确保已开启：`tools.browser=true`
+- 确保已开启：`browser_config.browser=true`
 - 若你运行环境无法下载 Chromium，可尝试使用镜像或手动安装浏览器
 
 ### Q4：视频分析一直失败？

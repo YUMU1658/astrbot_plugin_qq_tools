@@ -8,7 +8,7 @@ class RepeatMessageTool(FunctionTool):
     def __init__(self, plugin=None):
         show_message_id = True
         if plugin:
-            show_message_id = plugin.general_config.get("show_message_id", True)
+            show_message_id = plugin.context_enhance_config.get("show_message_id", True)
 
         desc_message_id = "要复读的消息ID。"
         if not show_message_id:

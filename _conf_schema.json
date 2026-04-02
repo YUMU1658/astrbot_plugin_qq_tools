@@ -1,363 +1,183 @@
 {
-  "tools": {
+  "basic_tools": {
     "type": "object",
-    "description": "⚙️ 工具开关 - 启用或禁用特定的工具",
+    "description": "🛠️ 基础工具开关",
     "default": {},
     "items": {
       "repeat": {
         "description": "复读消息 (repeat_message)",
-        "hint": "允许AstrBot复读（转发）指定的消息",
-        "type": "bool",
-        "default": true
-      },
-      "delete": {
-        "description": "撤回消息 (delete_message)",
-        "hint": "允许AstrBot撤回自己发送的消息",
+        "hint": "允许 AstrBot 复读（转发）指定的消息",
         "type": "bool",
         "default": true
       },
       "search": {
         "description": "搜索最近消息 (get_recent_messages)",
-        "hint": "允许AstrBot搜索群聊或私聊的历史记录上下文",
+        "hint": "允许 AstrBot 搜索群聊或私聊的历史记录上下文",
         "type": "bool",
         "default": true
       },
       "refresh": {
         "description": "刷新消息 (refresh_messages)",
-        "hint": "允许AstrBot主动刷新获取最新的消息列表",
+        "hint": "允许 AstrBot 主动刷新获取最新的消息列表",
         "type": "bool",
         "default": true
       },
       "stop": {
         "description": "结束对话 (stop_conversation)",
-        "hint": "允许AstrBot主动结束当前的对话会话",
+        "hint": "允许 AstrBot 主动结束当前的对话会话",
+        "type": "bool",
+        "default": true
+      },
+      "get_member_list": {
+        "description": "获取群成员列表 (get_group_member_list)",
+        "hint": "允许 AstrBot 获取群成员列表信息",
         "type": "bool",
         "default": true
       },
       "user_info": {
         "description": "查看个人资料 (get_user_info)",
-        "hint": "允许AstrBot获取用户的公开资料信息",
+        "hint": "允许 AstrBot 获取用户的公开资料信息",
         "type": "bool",
         "default": true
       },
-      "poke": {
-        "description": "戳一戳 (poke_user)",
-        "hint": "允许AstrBot发送双击头像（戳一戳）动作",
+      "delete": {
+        "description": "撤回消息 (delete_message)",
+        "hint": "允许 AstrBot 撤回自己发送的消息",
         "type": "bool",
         "default": true
-      },
-      "change_card": {
-        "description": "修改群名片 (change_group_card)",
-        "hint": "允许AstrBot修改自己或群友的群昵称（修改他人的群昵称需群管理员或群主权限）",
-        "type": "bool",
-        "default": true
-      },
-      "ban": {
-        "description": "拉黑用户 (ban_user)",
-        "hint": "允许AstrBot将用户加入 AstrBot 黑名单",
-        "type": "bool",
-        "default": false
-      },
-      "group_ban": {
-        "description": "群禁言 (group_ban)",
-        "hint": "允许AstrBot禁言群成员（需群管理员权限）",
-        "type": "bool",
-        "default": false
-      },
-      "group_mute_all": {
-        "description": "全体禁言 (group_mute_all)",
-        "hint": "允许AstrBot查询或设置群全体禁言状态（需群管理员或群主权限）",
-        "type": "bool",
-        "default": false
       },
       "kick_user": {
         "description": "移出群成员 (kick_user)",
-        "hint": "允许AstrBot将群成员移出本群（踢人）。需群管理员或群主权限。",
+        "hint": "⚠️ 危险操作！允许 AstrBot 将群成员移出本群（踢人）。需群管理员或群主权限。",
         "type": "bool",
-        "default": false
+        "default": false,
+        "obvious_hint": true
       },
-      "get_member_list": {
-        "description": "获取群成员列表 (get_group_member_list)",
-        "hint": "允许AstrBot获取群成员列表信息",
+      "group_ban": {
+        "description": "群禁言 (group_ban)",
+        "hint": "⚠️ 危险操作！允许 AstrBot 禁言群成员（需群管理员权限）",
+        "type": "bool",
+        "default": false,
+        "obvious_hint": true
+      },
+      "group_mute_all": {
+        "description": "全体禁言 (group_mute_all)",
+        "hint": "⚠️ 危险操作！允许 AstrBot 查询或设置群全体禁言状态（需群管理员或群主权限）",
+        "type": "bool",
+        "default": false,
+        "obvious_hint": true
+      },
+      "change_card": {
+        "description": "修改群名片 (change_group_card)",
+        "hint": "允许 AstrBot 修改自己或群友的群昵称（修改他人的群昵称需群管理员或群主权限）",
         "type": "bool",
         "default": true
       },
       "send_notice": {
         "description": "发送群公告 (send_group_notice)",
-        "hint": "允许AstrBot发布群公告（需群管理员权限）",
+        "hint": "⚠️ 危险操作！允许 AstrBot 发布群公告（需群管理员权限）",
         "type": "bool",
-        "default": false
-      },
-      "view_avatar": {
-        "description": "查看头像 (view_qq_avatar)",
-        "hint": "允许AstrBot查看群友或自己的头像大图（需主模型有视觉能力，或改为图像转述的方式）",
-        "type": "bool",
-        "default": true
+        "default": false,
+        "obvious_hint": true
       },
       "set_essence": {
         "description": "设置精华消息 (set_essence_message)",
-        "hint": "允许AstrBot设置群精华消息（需群管理员权限）",
+        "hint": "允许 AstrBot 设置群精华消息（需群管理员权限）",
         "type": "bool",
         "default": true
       },
       "set_title": {
         "description": "设置群头衔 (set_special_title)",
-        "hint": "允许AstrBot设置群成员的专属头衔（需机器人为群主）",
+        "hint": "允许 AstrBot 设置群成员的专属头衔（需机器人为群主）",
         "type": "bool",
         "default": true
       },
-      "view_video": {
-        "description": "查看视频 (view_video)",
-        "hint": "允许AstrBot查看和分析视频内容（需配置 Gemini API）",
+      "ban": {
+        "description": "拉黑用户 (ban_user)",
+        "hint": "⚠️ 危险操作！允许 AstrBot 将用户加入 AstrBot 黑名单",
         "type": "bool",
-        "default": false
+        "default": false,
+        "obvious_hint": true
       },
-      "browser": {
-        "description": "网页浏览 (browser_open, browser_grid 等)",
-        "hint": "允许AstrBot使用内置浏览器浏览网页（需 Playwright 和 Pillow 环境）",
+      "poke": {
+        "description": "戳一戳 (poke_user)",
+        "hint": "允许 AstrBot 发送双击头像（戳一戳）动作",
         "type": "bool",
-        "default": false
+        "default": true
       },
       "wake_scheduler": {
-        "description": "主动唤醒 (schedule, manage_wake)",
-        "hint": "允许AstrBot设置定时唤醒任务，到期后自动触发LLM对话。支持设置延迟时间和备注，任务到期后会在原会话中触发唤醒。",
+        "description": "定时唤醒 (schedule, manage_wake)",
+        "hint": "允许 AstrBot 设置定时唤醒任务，到期后自动触发 LLM 对话。支持设置延迟时间和备注，任务到期后会在原会话中触发唤醒。",
         "type": "bool",
         "default": true
-      },
+      }
+    }
+  },
+  "message_detail_config": {
+    "type": "object",
+    "description": "🔍 消息详情工具",
+    "default": {},
+    "items": {
       "message_detail": {
         "description": "消息详情 (get_message_detail)",
-        "hint": "允许AstrBot根据消息ID获取完整的消息结构，包括图片/文件信息、回复链等。可选将图片注入视觉上下文。",
-        "type": "bool",
-        "default": true
-      }
-    }
-  },
-  "general": {
-    "type": "object",
-    "description": "🔧 通用设置 - 插件的通用行为配置",
-    "default": {},
-    "items": {
-      "cache_size": {
-        "description": "每个会话缓存的消息数量",
-        "type": "int",
-        "default": 50
-      },
-      "cache_inactive_timeout": {
-        "description": "不活跃会话缓存超时时间（秒）",
-        "hint": "超过此时间没有新消息的会话缓存将被自动清理，释放内存。设置为 0 表示禁用自动清理。",
-        "type": "int",
-        "default": 3600
-      },
-      "cache_cleanup_interval": {
-        "description": "缓存清理任务执行间隔（秒）",
-        "hint": "后台定期检查并清理不活跃会话缓存的时间间隔。",
-        "type": "int",
-        "default": 300
-      },
-      "cache_bot_messages": {
-        "description": "是否自动缓存 BOT 发送的消息",
-        "hint": "通过调用 API 获取历史消息实现",
+        "hint": "允许 AstrBot 根据消息 ID 获取完整的消息结构，包括图片/文件信息、回复链等。可选将图片注入视觉上下文。",
         "type": "bool",
         "default": true
       },
-      "api_history_count": {
-        "description": "获取历史消息时的默认数量",
-        "type": "int",
-        "default": 10
-      },
-      "enable_auto_at_conversion": {
-        "description": "自动将AstrBot输出的 [At:QQ号] 转换为真实的 At 消息",
+      "auto_inject_images": {
         "type": "bool",
-        "default": false
-      },
-      "show_message_id": {
-        "description": "自动附加消息ID [MSG_ID:xxx]",
-        "hint": "方便 LLM 引用和撤回消息，关闭可以保证更好的兼容性，防止和其他插件冲突",
-        "type": "bool",
-        "default": true
-      },
-      "enhance_reply_quote": {
-        "description": "增强引用消息显示（图片/文件/卡片等）",
-        "hint": "修复/增强 QQ 引用回复：当被引用消息只有图片/文件/卡片等非文本内容时，也能在日志与上下文显示摘要。",
-        "type": "bool",
-        "default": true
-      },
-      "inject_reply_quote_into_message_str": {
-        "description": "将引用摘要注入 message_str",
-        "hint": "启用后，会在 event.message_str 前置追加 [引用消息(...)]，让 LLM 的文本上下文也能看到被引用内容。",
-        "type": "bool",
-        "default": true
-      },
-      "reply_quote_enrich_even_if_text": {
-        "description": "引用摘要包含非文本占位",
-        "hint": "启用后，即使被引用消息包含文字，也会把图片/文件/卡片等一起合成摘要（例如：\"文字 图片\"）。",
-        "type": "bool",
-        "default": true
-      },
-      "reply_quote_include_msg_id": {
-        "description": "在引用摘要里附带被引用消息 MSG_ID",
-        "hint": "启用后，引用摘要末尾会追加 MSG_ID:xxxx，便于直接引用或撤回。",
-        "type": "bool",
-        "default": true
-      },
-      "reply_quote_max_len": {
-        "description": "引用摘要最大长度",
-        "hint": "超过此长度会截断并追加省略号。设置为 0 表示不截断。",
-        "type": "int",
-        "default": 80
-      },
-      "show_file_info": {
-        "description": "显示文件信息 [File:name=xxx,...]",
-        "hint": "方便 LLM 识别文件和查看视频，关闭可以保证更好的兼容性，防止和其他插件冲突",
-        "type": "bool",
-        "default": false
-      },
-      "show_image_as_file": {
-        "description": "将图片也作为文件信息显示",
-        "hint": "默认关闭，因为图片已有 [Image] 标记",
-        "type": "bool",
-        "default": false
-      },
-      "auto_install_browser_deps": {
-        "description": "自动尝试安装浏览器依赖",
-        "hint": "启用后，若开启了网页浏览功能且检测到缺少依赖，会自动执行 pip install playwright 和 playwright install chromium。失败时尝试使用镜像源重试。",
-        "type": "bool",
-        "default": false
-      },
-      "message_filter_patterns": {
-        "description": "消息内容过滤 (Regex)",
-        "hint": "过滤 Astrbot 发送的 QQ 消息内容，支持多个正则表达式。在发送前执行。",
-        "type": "list",
-        "default": [],
-        "items": {
-          "type": "string",
-          "description": "正则表达式"
+        "description": "自动注入图片到 LLM 视觉上下文",
+        "hint": "启用后，get_message_detail 工具默认会将消息中的图片注入到 LLM 视觉上下文中，让模型能「看到」图片。LLM 调用时可通过 inject_images 参数覆盖此设置。",
+        "default": false,
+        "condition": {
+          "message_detail": true
         }
       },
-      "poke_return_info": {
-        "description": "戳一戳返回动作文案",
-        "hint": "启用后，戳一戳工具默认会返回动作文案（如'你踢了踢xxx'），而不是简单的成功提示。LLM 调用工具时仍可通过 return_poke_info 参数覆盖此设置。",
-        "type": "bool",
-        "default": true
-      },
-      "inject_bilibili_card_context": {
-        "description": "注入B站卡片上下文",
-        "hint": "启用后，当收到QQ里的B站分享卡片消息时，自动从消息中提取BV号/av号/链接等信息，生成 [BILI_CARD ...] 格式文本追加到上下文，供 LLM 参考并可直接用于调用 view_video 工具。仅处理B站卡片，其他平台卡片会被忽略。",
-        "type": "bool",
-        "default": true
-      }
-    }
-  },
-  "reply_adapter": {
-    "type": "object",
-    "description": "💬 引用回复适配器 - 让 LLM 通过 [REPLY:message_id] 格式输出引用回复",
-    "default": {},
-    "items": {
-      "enable": {
-        "description": "启用引用回复适配器",
-        "hint": "启用后，LLM 输出 [REPLY:message_id]内容 格式时，会自动转换为引用回复消息。每行一个标签代表一条消息，同一消息内换行用 \\\\n 表示。",
-        "type": "bool",
-        "default": false
-      },
-      "prompt": {
-        "description": "提示词注入",
-        "hint": "为空则不注入。非空时会追加到 system_prompt，引导 LLM 使用 [REPLY:id]内容 格式。",
-        "type": "string",
-        "default": "【引用回复格式】当你需要引用回复某条消息时，请在输出中使用：[REPLY:消息ID]你的回复内容。消息ID可从上下文中的 [MSG_ID:xxx] 获取。如果回复内容需要换行，使用 \\n 表示（字面两个字符）。不使用此格式则为普通消息。"
-      }
-    }
-  },
-  "compatibility": {
-    "type": "object",
-    "description": "⚙️ 兼容性相关 - 与其他插件或系统的兼容性设置",
-    "default": {},
-    "items": {
-      "fix_tool_leak": {
-        "description": "尝试修复工具调用泄露",
-        "hint": "当检测到 LLM 将工具调用文本直接泄露到消息中时，尝试自动解析并修复",
-        "type": "bool",
-        "default": true
-      },
-      "add_tool_prefix": {
-        "description": "为工具名称添加 qts_ 前缀",
-        "hint": "启用后，本插件所有工具的名称将以 qts_ 开头（如 get_user_info 变成 qts_get_user_info）。修改后会自动清理残余工具。",
-        "type": "bool",
-        "default": false
-      },
-      "disable_auto_uninstall": {
-        "description": "禁用自动卸载未启用的工具",
-        "hint": "启用后，插件初始化时不会尝试卸载本插件未启用的工具。这可以防止误卸载已存在的同名工具，但会导致修改工具配置后需要重启AstrBot才能生效。",
-        "type": "bool",
-        "default": false
-      },
-      "delay_append_msg_id": {
-        "description": "防止 [MSG_ID:xxx] 污染群聊记忆/LTM",
-        "hint": "启用后，[MSG_ID:xxx] 不会注入到消息上下文中（避免 LTM 记录），但仍会存储在插件缓存中供工具（如引用/撤回/搜索消息）正常使用。这是一种更稳定的实现方式。",
-        "type": "bool",
-        "default": false
-      },
-      "filter_patterns": {
-        "description": "回复内容过滤 (Regex)",
-        "hint": "过滤工具回复内容，支持多个正则表达式",
-        "type": "list",
-        "default": [
-          "&&.*?&&"
-        ],
-        "items": {
-          "type": "string",
-          "description": "正则表达式"
-        }
-      }
-    }
-  },
-  "tool_permission": {
-    "type": "object",
-    "description": "🔐 工具权限 - 控制谁可以触发危险工具",
-    "default": {},
-    "items": {
-      "admin_only_tools": {
-        "description": "仅管理员可用的工具列表",
-        "hint": "这些工具只有 AstrBot 管理员、白名单用户（或群主/管理员，如果启用）才能触发。支持通配符如 browser_*。⚠️ 支持权限控制的工具：ban_user, group_ban, group_mute_all, kick_user, delete_message, change_group_card, send_group_notice, set_essence_message, set_special_title, browser_*, view_video, schedule, manage_wake。其他工具（如 get_user_info 等）不支持加入此列表，因为这些工具无危险性或一旦启用就应让 LLM 自由调用。",
-        "type": "list",
-        "default": ["ban_user", "group_ban", "group_mute_all", "kick_user", "delete_message", "change_group_card", "send_group_notice", "set_essence_message", "browser_*"],
-        "items": {
-          "type": "string",
-          "description": "工具名称（支持通配符）"
+      "max_inject_images": {
+        "type": "int",
+        "description": "单次最大注入图片数",
+        "hint": "限制单次调用最多注入多少张图片到上下文中",
+        "default": 5,
+        "condition": {
+          "message_detail": true,
+          "auto_inject_images": true
         }
       },
-      "tool_allow_users": {
-        "description": "工具白名单用户",
-        "hint": "这些用户可以无限制使用所有工具。填写 AstrBot 用户ID 或 QQ 号",
-        "type": "list",
-        "default": [],
-        "items": {
-          "type": "string",
-          "description": "用户ID"
+      "max_reply_chain_depth": {
+        "type": "int",
+        "description": "最大回复链追溯深度",
+        "hint": "递归获取回复链时的最大层数，设置为 0 表示不获取回复链",
+        "default": 3,
+        "condition": {
+          "message_detail": true
         }
       },
-      "llm_ignore_permission_check": {
-        "description": "LLM调用工具无视权限检查",
-        "hint": "⚠️ 危险：启用后所有被打开的工具LLM均可自由调用，无视用户是否为管理员或白名单",
+      "convert_unsupported_formats": {
         "type": "bool",
-        "default": false
-      },
-      "allow_group_admin": {
-        "description": "允许群管理员/群主调用受限工具",
-        "hint": "⚠️ 危险：启用后，群聊中的群主和管理员也可以使用受限工具",
-        "type": "bool",
-        "default": false
+        "description": "自动转换不兼容的图片格式",
+        "hint": "启用后，GIF、BMP、TIFF 等不被模型支持的图片格式会自动转换为 PNG。这可以避免「mime type is not supported」错误。",
+        "default": true,
+        "condition": {
+          "message_detail": true
+        }
       }
     }
   },
   "view_avatar_config": {
     "type": "object",
-    "description": "🖼️ 头像查看 - 查看头像工具配置",
+    "description": "🖼️ 头像查看工具",
     "default": {},
     "items": {
+      "view_avatar": {
+        "description": "查看头像 (view_qq_avatar)",
+        "hint": "允许 AstrBot 查看群友或自己的头像大图（需主模型有视觉能力，或改为图像转述的方式）",
+        "type": "bool",
+        "default": true
+      },
       "view_mode": {
         "type": "string",
-        "description": "查看方式",
-        "hint": "插入上下文：将图片注入到LLM视觉上下文中，让模型直接看图分析。图像描述：调用指定的模型服务商来描述图片内容。",
+        "description": "头像查看方式",
+        "hint": "插入上下文：将图片注入到 LLM 视觉上下文中，让模型直接看图分析。图像描述：调用指定的模型服务商来描述图片内容。",
         "default": "context",
         "options": [
           "context",
@@ -366,106 +186,176 @@
         "labels": [
           "插入上下文",
           "图像描述"
-        ]
+        ],
+        "condition": {
+          "view_avatar": true
+        }
       },
       "describe_provider_id": {
         "type": "string",
-        "description": "图像描述模型服务商ID",
-        "hint": "当查看方式为「图像描述」时生效。填写 AstrBot 中配置的模型服务商ID，该模型需要支持图片输入能力。",
-        "default": ""
+        "description": "图像描述服务商 ID",
+        "hint": "当查看方式为「图像描述」时生效。填写 AstrBot 中配置的模型服务商 ID，该模型需要支持图片输入能力。",
+        "default": "",
+        "condition": {
+          "view_avatar": true,
+          "view_mode": "describe"
+        }
       },
       "describe_prompt": {
         "type": "string",
         "description": "图像描述提示词",
         "hint": "调用模型描述图片时使用的提示词。",
-        "default": "请详细描述这个头像图片的内容，包括人物特征、风格、颜色等。"
+        "default": "请详细描述这个头像图片的内容，包括人物特征、风格、颜色等。",
+        "condition": {
+          "view_avatar": true,
+          "view_mode": "describe"
+        }
+      },
+      "inject_as_base64": {
+        "type": "bool",
+        "description": "以 Base64 形式注入图片",
+        "hint": "若模型 API 报错 \"unsupported image url\" 时可启用。启用后，插件会先下载图片并转为 Base64 数据再注入 LLM 上下文。关闭则直接注入图片 URL（更快，但部分模型 API 可能不支持）。注意：下载失败时会自动回退到 URL 注入。",
+        "default": false,
+        "condition": {
+          "view_avatar": true
+        }
       }
     }
   },
   "browser_config": {
     "type": "object",
-    "description": "🌐 浏览器 - 网页浏览工具配置",
+    "description": "🌐 网页浏览工具",
     "default": {},
     "items": {
+      "browser": {
+        "description": "启用网页浏览工具",
+        "hint": "允许 LLM 使用内置浏览器浏览网页（需 Playwright 和 Pillow 环境）",
+        "type": "bool",
+        "default": false
+      },
       "timeout_seconds": {
         "type": "int",
         "description": "浏览器会话超时时间（秒）",
         "hint": "超过此时间无操作，浏览器会自动释放控制权供其他用户使用",
-        "default": 180
+        "default": 180,
+        "condition": {
+          "browser": true
+        }
       },
       "viewport_width": {
         "type": "int",
         "description": "浏览器视口宽度",
-        "default": 1280
+        "default": 1280,
+        "condition": {
+          "browser": true
+        }
       },
       "viewport_height": {
         "type": "int",
         "description": "浏览器视口高度",
-        "default": 720
+        "default": 720,
+        "condition": {
+          "browser": true
+        }
       },
       "post_action_wait_ms": {
         "type": "int",
-        "description": "交互后等待时间（毫秒）",
-        "hint": "点击、输入、滚动等交互操作完成后，在截图前等待的时间。确保页面状态更新完成。范围：100-2000ms",
+        "description": "操作后截图等待时间（ms）",
+        "hint": "点击、输入、滚动等操作完成后，截图前等待页面更新的时间。范围：100-2000ms",
         "default": 500,
         "minimum": 100,
-        "maximum": 2000
+        "maximum": 2000,
+        "condition": {
+          "browser": true
+        }
       },
       "user_screenshot_wait_ms": {
         "type": "int",
-        "description": "用户截图前等待时间（毫秒）",
-        "hint": "browser_screenshot 工具发送截图给用户前的等待时间。确保页面完全加载。范围：100-2000ms",
+        "description": "发送截图前等待时间（ms）",
+        "hint": "browser_screenshot 工具将截图发送给用户前的等待时间，确保页面完全加载。范围：100-2000ms",
         "default": 500,
         "minimum": 100,
-        "maximum": 2000
+        "maximum": 2000,
+        "condition": {
+          "browser": true
+        }
       },
       "mark_mode": {
         "type": "string",
-        "description": "标签渲染模式",
-        "hint": "minimal=最少标签(仅强交互元素)，balanced=平衡模式(推荐)，all=全部标签",
+        "description": "元素标记模式",
+        "hint": "minimal=最少标记(仅强交互元素)，balanced=平衡模式(推荐)，all=全部标记",
         "default": "balanced",
-        "options": ["minimal", "balanced", "all"],
-        "labels": ["最少", "平衡", "全部"]
+        "options": [
+          "minimal",
+          "balanced",
+          "all"
+        ],
+        "labels": [
+          "最少",
+          "平衡",
+          "全部"
+        ],
+        "condition": {
+          "browser": true
+        }
       },
       "max_marks": {
         "type": "int",
-        "description": "最大标记数量",
-        "hint": "限制页面上显示的最大标签数，避免满屏数字。推荐60-100",
-        "default": 80
+        "description": "页面最大标记数",
+        "hint": "限制页面上显示的最大标记数，避免满屏数字。推荐 60-100",
+        "default": 80,
+        "condition": {
+          "browser": true
+        }
       },
       "min_element_area": {
         "type": "int",
         "description": "最小元素面积（像素²）",
-        "hint": "小于此面积的元素不会被标记。默认400(约20x20像素)",
-        "default": 400
+        "hint": "小于此面积的元素不会被标记。默认 400（约 20x20 像素）",
+        "default": 400,
+        "condition": {
+          "browser": true
+        }
       },
       "nms_iou_threshold": {
         "type": "float",
-        "description": "NMS 重叠抑制阈值",
-        "hint": "0-1之间，越小则去重越激进。用于避免父子元素重复标记",
-        "default": 0.6
+        "description": "元素去重阈值（NMS IoU）",
+        "hint": "0~1 之间，值越小去重越激进。用于避免父子元素重复标记。建议保持默认值。",
+        "default": 0.6,
+        "condition": {
+          "browser": true
+        }
       },
       "allow_private_network": {
         "type": "bool",
         "description": "允许访问私有网络",
         "hint": "⚠️ 安全警告：启用后将允许访问 localhost、内网地址（10.x/172.16.x/192.168.x）等私有网络。这可能导致 SSRF 攻击风险。除非你明确知道自己在做什么，否则请保持禁用。",
-        "default": false
+        "default": false,
+        "condition": {
+          "browser": true
+        }
       },
       "allowed_domains": {
         "type": "list",
-        "description": "域名白名单（可选）",
+        "description": "域名白名单",
         "hint": "如果配置了白名单，则只允许访问列表中的域名。留空表示不限制（但仍受私有网络限制）。支持通配符，如 *.example.com",
         "default": [],
         "items": {
           "type": "string",
           "description": "允许的域名，如 example.com 或 *.example.com"
+        },
+        "condition": {
+          "browser": true
         }
       },
       "default_grid_step": {
         "type": "float",
-        "description": "网格工具默认间距",
-        "hint": "0.05-0.25之间，默认0.1 (10%)",
-        "default": 0.1
+        "description": "网格工具间距",
+        "hint": "0.05-0.25 之间，默认 0.1（10%）",
+        "default": 0.1,
+        "condition": {
+          "browser": true
+        }
       },
       "blocked_domains": {
         "type": "list",
@@ -475,18 +365,36 @@
         "items": {
           "type": "string",
           "description": "拒绝的域名"
+        },
+        "condition": {
+          "browser": true
+        }
+      },
+      "auto_install_browser_deps": {
+        "type": "bool",
+        "description": "自动安装浏览器依赖",
+        "hint": "启用后，若开启了网页浏览功能且检测到缺少依赖，会自动执行 pip install playwright 和 playwright install chromium。失败时尝试使用镜像源重试。",
+        "default": false,
+        "condition": {
+          "browser": true
         }
       }
     }
   },
   "gemini_video_config": {
     "type": "object",
-    "description": "🎥 视频分析 (Gemini) - 查看视频工具配置",
+    "description": "🎥 视频分析工具 (Gemini)",
     "default": {},
     "items": {
+      "view_video": {
+        "description": "启用视频分析工具",
+        "hint": "允许 LLM 查看和分析视频内容（需配置 Gemini API）",
+        "type": "bool",
+        "default": false
+      },
       "upload_mode": {
         "type": "string",
-        "description": "上传方式",
+        "description": "视频上传方式",
         "hint": "File API：先上传文件到 Gemini，再调用生成接口，支持更大的文件。base64：将文件转为 base64 直接发送，适合小文件但有大小限制。",
         "default": "file_api",
         "options": [
@@ -496,46 +404,70 @@
         "labels": [
           "File API",
           "base64"
-        ]
+        ],
+        "condition": {
+          "view_video": true
+        }
       },
       "api_url": {
         "type": "string",
         "description": "Gemini API 地址",
         "hint": "如 https://generativelanguage.googleapis.com",
-        "default": "https://generativelanguage.googleapis.com"
+        "default": "https://generativelanguage.googleapis.com",
+        "condition": {
+          "view_video": true
+        }
       },
       "api_key": {
         "type": "string",
         "description": "Gemini API Key",
-        "secret": true
+        "secret": true,
+        "condition": {
+          "view_video": true
+        }
       },
       "model_id": {
         "type": "string",
-        "description": "模型 ID",
+        "description": "Gemini 模型 ID",
         "hint": "如 gemini-2.5-flash",
-        "default": "gemini-3-flash-preview"
+        "default": "gemini-3-flash-preview",
+        "condition": {
+          "view_video": true
+        }
       },
       "size_limit": {
         "type": "int",
-        "description": "视频文件大小限制 (MB)",
+        "description": "视频文件大小限制（MB）",
         "hint": "File API 支持更大的文件（最大 2GB），base64 方式建议不超过 20MB",
-        "default": 50
+        "default": 50,
+        "condition": {
+          "view_video": true
+        }
       },
       "duration_limit": {
         "type": "int",
-        "description": "视频时长限制 (秒)",
-        "default": 300
+        "description": "视频时长限制（秒）",
+        "default": 300,
+        "condition": {
+          "view_video": true
+        }
       },
       "prompt": {
         "type": "string",
-        "description": "提示词",
-        "default": "请描述视频内容"
+        "description": "视频分析提示词",
+        "default": "请描述视频内容",
+        "condition": {
+          "view_video": true
+        }
       },
       "timeout": {
         "type": "int",
-        "description": "超时时间 (秒)",
+        "description": "API 超时时间（秒）",
         "hint": "File API 需要更长的超时时间来等待文件处理",
-        "default": 120
+        "default": 120,
+        "condition": {
+          "view_video": true
+        }
       },
       "bilibili_quality": {
         "type": "string",
@@ -549,59 +481,312 @@
         "labels": [
           "流畅 (360P)",
           "普通 (480P)"
-        ]
+        ],
+        "condition": {
+          "view_video": true
+        }
       }
     }
   },
-  "message_detail_config": {
+  "reply_adapter": {
     "type": "object",
-    "description": "🔍 消息详情 - 消息详情工具配置",
+    "description": "💬 引用回复适配器 - 让 LLM 输出引用回复消息",
     "default": {},
     "items": {
-      "auto_inject_images": {
+      "enable": {
+        "description": "启用引用回复适配器",
+        "hint": "启用后，LLM 输出 [REPLY:message_id]内容 格式时，会自动转换为 QQ 的引用回复消息。每行一个标签代表一条消息，同一消息内换行用 \\n 表示。",
         "type": "bool",
-        "description": "自动将图片注入视觉上下文",
-        "hint": "启用后，get_message_detail 工具默认会将消息中的图片注入到LLM视觉上下文中，让模型能「看到」图片。LLM调用时可通过 inject_images 参数覆盖此设置。",
         "default": false
       },
-      "max_inject_images": {
-        "type": "int",
-        "description": "最大注入图片数量",
-        "hint": "限制单次调用最多注入多少张图片到上下文中",
-        "default": 5
-      },
-      "max_reply_chain_depth": {
-        "type": "int",
-        "description": "最大回复链追溯深度",
-        "hint": "递归获取回复链时的最大层数，设置为 0 表示不获取回复链",
-        "default": 3
-      },
-      "convert_unsupported_formats": {
+      "prompt": {
+        "description": "引导提示词",
+        "hint": "为空则不注入。非空时会追加到 system_prompt，引导 LLM 使用 [REPLY:id]内容 格式。",
+        "type": "string",
+        "default": "【引用回复格式】当你需要引用回复某条消息时，请在输出中使用：[REPLY:消息ID]你的回复内容。消息ID可从上下文中的 [MSG_ID:xxx] 获取。如果回复内容需要换行，使用 \\n 表示（字面两个字符）。不使用此格式则为普通消息。",
+        "condition": {
+          "enable": true
+        }
+      }
+    }
+  },
+  "context_enhance": {
+    "type": "object",
+    "description": "🔧 上下文增强 - 消息 ID、引用摘要、文件信息等",
+    "default": {},
+    "items": {
+      "show_message_id": {
+        "description": "在消息末尾附加消息 ID",
+        "hint": "启用后，每条消息末尾会自动添加 [MSG_ID:xxx] 标记，供 LLM 引用回复、撤回、设置精华等操作。关闭可避免与其他插件冲突，但 LLM 将只能通过「搜索最近消息」工具获取消息 ID。",
         "type": "bool",
-        "description": "自动转换不支持的图片格式",
-        "hint": "启用后，GIF、BMP、TIFF 等不被 Gemini 支持的图片格式会自动转换为 PNG。这可以避免「mime type is not supported」错误。",
         "default": true
+      },
+      "skip_msg_id_prefixes": {
+        "description": "跳过消息 ID 注入的指令前缀",
+        "hint": "填写指令/命令前缀（如 help 等），以这些前缀开头的消息不会被注入 [MSG_ID:xxx]，避免与其他指令解析插件冲突。注意：AstrBot 的唤醒前缀（如 / ）会在消息到达插件之前被移除，所以应填写唤醒前缀之后的命令前缀（如 help 而非 /help ）。留空表示禁用此功能。MSG_ID 仍会存储在插件缓存中供工具使用。",
+        "type": "list",
+        "default": [],
+        "items": {
+          "type": "string",
+          "description": "指令前缀"
+        },
+        "condition": {
+          "show_message_id": true
+        }
+      },
+      "enable_auto_at_conversion": {
+        "description": "自动转换 [At:QQ号] 为真实 @ 消息",
+        "hint": "启用后，LLM 输出中的 [At:QQ号] 会自动转换为 QQ 的 @ 消息。在群聊中，聊天记录里的 @ 以 [At:QQ号] 形式传入上下文，开启后 LLM 也能用同样格式发出真实的 @。",
+        "type": "bool",
+        "default": false
+      },
+      "inject_bilibili_card_context": {
+        "description": "解析 B站分享卡片",
+        "hint": "启用后，当收到 QQ 里的 B站分享卡片消息时，自动从消息中提取 BV号/av号/链接等信息，生成 [BILI_CARD ...] 格式文本追加到上下文，供 LLM 参考并可直接用于调用 view_video 工具。仅处理 B站卡片，其他平台卡片会被忽略。",
+        "type": "bool",
+        "default": true
+      },
+      "reply_quote": {
+        "type": "object",
+        "description": "📝 引用摘要设置",
+        "default": {},
+        "items": {
+          "enhance_reply_quote": {
+            "description": "增强引用消息摘要",
+            "hint": "启用后，当被引用的消息包含图片、文件、卡片等非文本内容时，也能在上下文中生成可读的摘要信息。AstrBot 默认只显示引用消息的文字部分，开启后可补全非文本内容。",
+            "type": "bool",
+            "default": true
+          },
+          "inject_reply_quote_into_message_str": {
+            "description": "将引用摘要写入消息文本",
+            "hint": "启用后，会在 event.message_str 前置追加 [引用消息(...)]，让 LLM 的文本上下文也能看到被引用内容。",
+            "type": "bool",
+            "default": true,
+            "condition": {
+              "enhance_reply_quote": true
+            }
+          },
+          "reply_quote_enrich_even_if_text": {
+            "description": "混合内容时也生成完整摘要",
+            "hint": "启用后，即使被引用消息已有文字，也会把图片、文件、卡片等非文本内容一并合成到摘要中（例如显示为「文字内容 图片」）。",
+            "type": "bool",
+            "default": true,
+            "condition": {
+              "enhance_reply_quote": true
+            }
+          },
+          "reply_quote_include_msg_id": {
+            "description": "引用摘要中包含消息 ID",
+            "hint": "启用后，引用摘要末尾会追加 MSG_ID:xxxx，便于直接引用或撤回。",
+            "type": "bool",
+            "default": true,
+            "condition": {
+              "enhance_reply_quote": true
+            }
+          },
+          "reply_quote_max_len": {
+            "description": "引用摘要最大长度",
+            "hint": "超过此长度会截断并追加省略号。设置为 0 表示不截断。",
+            "type": "int",
+            "default": 80,
+            "condition": {
+              "enhance_reply_quote": true
+            }
+          }
+        }
+      },
+      "file_info": {
+        "type": "object",
+        "description": "📁 文件信息设置",
+        "default": {},
+        "items": {
+          "show_file_info": {
+            "description": "在消息中显示文件信息",
+            "hint": "启用后，消息中的文件、视频、语音等附件会以 [File:name=xxx,...] 格式追加到上下文中。AstrBot 默认不会将 QQ 中的文件信息传递给模型，开启后可让 LLM 感知到文件的存在。「查看视频」工具较依赖此功能。",
+            "type": "bool",
+            "default": true
+          },
+          "show_image_as_file": {
+            "description": "将图片也作为文件信息显示",
+            "hint": "默认关闭，因为图片已有 [Image] 标记",
+            "type": "bool",
+            "default": false,
+            "condition": {
+              "show_file_info": true
+            }
+          }
+        }
+      }
+    }
+  },
+  "tool_permission": {
+    "type": "object",
+    "description": "🔐 工具权限 - 控制谁可以使用受限工具",
+    "default": {},
+    "items": {
+      "admin_only_tools": {
+        "description": "受限工具列表（仅管理员可触发）",
+        "hint": "列表中的工具只有 AstrBot 管理员、白名单用户（或群主/管理员，如果启用下方选项）才能触发。支持通配符如 browser_*。⚠️ 可配置的工具：ban_user, group_ban, group_mute_all, kick_user, delete_message, change_group_card, send_group_notice, set_essence_message, set_special_title, browser_*, view_video, schedule, manage_wake。其他工具（如 get_user_info 等）不支持加入此列表。",
+        "type": "list",
+        "default": [
+          "ban_user",
+          "group_ban",
+          "group_mute_all",
+          "kick_user",
+          "delete_message",
+          "change_group_card",
+          "send_group_notice",
+          "set_essence_message",
+          "browser_*"
+        ],
+        "items": {
+          "type": "string",
+          "description": "工具名称（支持通配符）"
+        }
+      },
+      "tool_allow_users": {
+        "description": "工具权限白名单",
+        "hint": "这些用户可以无限制使用所有工具。填写 AstrBot 用户ID 或 QQ 号",
+        "type": "list",
+        "default": [],
+        "items": {
+          "type": "string",
+          "description": "用户ID"
+        }
+      },
+      "llm_ignore_permission_check": {
+        "description": "LLM 调用工具时跳过权限检查",
+        "hint": "⚠️ 危险：启用后所有被打开的工具 LLM 均可自由调用，无视用户是否为管理员或白名单",
+        "type": "bool",
+        "default": false
+      },
+      "allow_group_admin": {
+        "description": "允许群管理员/群主调用受限工具",
+        "hint": "⚠️ 危险：启用后，群聊中的群主和管理员也可以使用受限工具",
+        "type": "bool",
+        "default": false
+      }
+    }
+  },
+  "advanced": {
+    "type": "object",
+    "description": "⚙️ 高级设置 - 消息缓存、消息过滤、兼容性等",
+    "default": {},
+    "items": {
+      "poke_return_info": {
+        "description": "戳一戳默认返回动作文案",
+        "hint": "启用后，戳一戳工具默认会返回动作文案（如'你踢了踢xxx'），而不是简单的成功提示。LLM 调用工具时仍可通过 return_poke_info 参数覆盖此设置。",
+        "type": "bool",
+        "default": true
+      },
+      "message_filter_patterns": {
+        "description": "发送消息过滤规则（正则）",
+        "hint": "在 AstrBot 发送消息前，使用正则表达式过滤（删除匹配内容）。可配置多条规则。",
+        "type": "list",
+        "default": [],
+        "items": {
+          "type": "string",
+          "description": "正则表达式"
+        }
+      },
+      "message_cache": {
+        "type": "object",
+        "description": "💾 消息缓存设置",
+        "default": {},
+        "items": {
+          "cache_bot_messages": {
+            "description": "缓存机器人发送的消息",
+            "hint": "启用后，机器人自己发送的消息也会被缓存，使「搜索最近消息」等工具能查到机器人的历史发言。通过调用 OneBot API 获取历史消息实现。",
+            "type": "bool",
+            "default": true
+          },
+          "api_history_count": {
+            "description": "每次获取历史消息的条数",
+            "type": "int",
+            "default": 10,
+            "condition": {
+              "cache_bot_messages": true
+            }
+          },
+          "cache_size": {
+            "description": "每个会话的缓存上限（条）",
+            "type": "int",
+            "default": 50,
+            "condition": {
+              "cache_bot_messages": true
+            }
+          },
+          "cache_inactive_timeout": {
+            "description": "会话缓存过期时间（秒）",
+            "hint": "超过此时间没有新消息的会话缓存将被自动清理，释放内存。设置为 0 表示禁用自动清理。",
+            "type": "int",
+            "default": 3600,
+            "condition": {
+              "cache_bot_messages": true
+            }
+          },
+          "cache_cleanup_interval": {
+            "description": "缓存清理检查间隔（秒）",
+            "hint": "后台定期检查并清理不活跃会话缓存的时间间隔。",
+            "type": "int",
+            "default": 300,
+            "condition": {
+              "cache_bot_messages": true
+            }
+          }
+        }
+      },
+      "compatibility": {
+        "type": "object",
+        "description": "🔄 兼容性设置",
+        "default": {},
+        "items": {
+          "delay_append_msg_id": {
+            "description": "延迟注入消息 ID（避免污染长期记忆）",
+            "hint": "启用后，[MSG_ID:xxx] 不会写入消息上下文（避免被长期记忆/LTM 记录），但仍会保存在插件缓存中，不影响工具正常使用。⚠️ 注意：此选项可能导致 LLM 无法在群聊天记录的上下文中看到消息 ID，从而影响需要消息 ID 的操作（如引用回复、撤回等）。需要「上下文增强」中的「在消息末尾附加消息 ID」启用才有意义。",
+            "type": "bool",
+            "default": false
+          },
+          "fix_tool_leak": {
+            "description": "自动修复工具调用泄露",
+            "hint": "当 LLM 将工具调用的原始文本（如 JSON 格式的函数调用）直接泄露到回复消息中时，自动检测并尝试解析修复。",
+            "type": "bool",
+            "default": true
+          },
+          "add_tool_prefix": {
+            "description": "为工具名称添加 qts_ 前缀",
+            "hint": "启用后，本插件所有工具的名称将以 qts_ 开头（如 get_user_info 变成 qts_get_user_info）。修改后会自动清理残余工具。",
+            "type": "bool",
+            "default": false
+          },
+          "disable_auto_uninstall": {
+            "description": "禁用工具自动清理",
+            "hint": "启用后，插件初始化时不会自动卸载未启用或残余的工具。可防止误卸载其他插件的同名工具，但修改工具开关后需重启 AstrBot 才能生效。",
+            "type": "bool",
+            "default": false
+          }
+        }
       }
     }
   },
   "ban_list": {
     "type": "list",
-    "description": "🚫 黑名单 - 黑名单列表",
+    "description": "🚫 黑名单列表",
     "items": {
       "type": "object",
       "description": "黑名单项",
       "items": {
         "user_id": {
           "type": "string",
-          "description": "用户ID"
+          "description": "用户 ID"
         },
         "ban_time": {
           "type": "int",
-          "description": "拉黑开始时间戳"
+          "description": "拉黑时间（时间戳）"
         },
         "duration": {
           "type": "int",
-          "description": "时长(秒, -1为永久)"
+          "description": "拉黑时长（秒，-1 为永久）"
         }
       }
     },

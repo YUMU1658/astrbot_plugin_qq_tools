@@ -167,13 +167,131 @@ from .tools.browser import (
 )
 
 class QQToolsPlugin(Star):
+    
+    @staticmethod
+    def _do_migrate_config(config) -> bool:
+        """一次性配置迁移：从旧结构迁移到新结构
+        
+        检测旧的配置 key 是否存在，如果存在则将值迁移到新结构，然后删除旧 key。
+        迁移映射：
+          - tools -> basic_tools
+          - general.show_message_id/skip_msg_id_prefixes/enable_auto_at_conversion/inject_bilibili_card_context -> context_enhance.*
+          - general.delay_append_msg_id -> advanced.compatibility.delay_append_msg_id
+          - general.reply_quote -> context_enhance.reply_quote
+          - general.file_info -> context_enhance.file_info
+          - general.poke_return_info -> advanced.poke_return_info
+          - general.message_filter_patterns -> advanced.message_filter_patterns
+          - general.message_cache -> advanced.message_cache
+          - compatibility -> advanced.compatibility
+          
+        Returns:
+            bool: True 如果执行了迁移操作
+        """
+        migrated = False
+        
+        # 1. tools -> basic_tools
+        if "tools" in config and "basic_tools" not in config:
+            config["basic_tools"] = config.pop("tools")
+            migrated = True
+            logger.info("[QQTools] 配置迁移: tools -> basic_tools")
+        elif "tools" in config:
+            del config["tools"]
+            migrated = True
+        
+        # 2. general -> context_enhance + advanced
+        old_general = config.get("general")
+        if isinstance(old_general, dict):
+            # 初始化目标
+            if "context_enhance" not in config:
+                config["context_enhance"] = {}
+            if "advanced" not in config:
+                config["advanced"] = {}
+            
+            ce = config["context_enhance"]
+            adv = config["advanced"]
+            
+            # 迁移到 context_enhance 的字段
+            ce_keys = [
+                "show_message_id", "skip_msg_id_prefixes",
+                "enable_auto_at_conversion", "inject_bilibili_card_context"
+            ]
+            
+            # delay_append_msg_id 迁移到 advanced.compatibility
+            if "delay_append_msg_id" in old_general:
+                if "compatibility" not in adv:
+                    adv["compatibility"] = {}
+                if "delay_append_msg_id" not in adv["compatibility"]:
+                    adv["compatibility"]["delay_append_msg_id"] = old_general["delay_append_msg_id"]
+            for k in ce_keys:
+                if k in old_general and k not in ce:
+                    ce[k] = old_general[k]
+            
+            # 迁移子对象到 context_enhance
+            for sub_key in ("reply_quote", "file_info"):
+                if sub_key in old_general and sub_key not in ce:
+                    ce[sub_key] = old_general[sub_key]
+            
+            # 迁移到 advanced 的字段
+            adv_keys = ["poke_return_info", "message_filter_patterns"]
+            for k in adv_keys:
+                if k in old_general and k not in adv:
+                    adv[k] = old_general[k]
+            
+            # 迁移 message_cache 到 advanced
+            if "message_cache" in old_general and "message_cache" not in adv:
+                adv["message_cache"] = old_general["message_cache"]
+            
+            # 删除旧 key
+            del config["general"]
+            migrated = True
+            logger.info("[QQTools] 配置迁移: general -> context_enhance + advanced")
+        
+        # 3. compatibility -> advanced.compatibility
+        old_compat = config.get("compatibility")
+        if isinstance(old_compat, dict):
+            if "advanced" not in config:
+                config["advanced"] = {}
+            if "compatibility" not in config["advanced"]:
+                config["advanced"]["compatibility"] = old_compat
+            del config["compatibility"]
+            migrated = True
+            logger.info("[QQTools] 配置迁移: compatibility -> advanced.compatibility")
+        
+        return migrated
+    
+    def _migrate_config_if_needed(self):
+        """检查并执行配置迁移，如果发生迁移则保存配置"""
+        try:
+            if self._do_migrate_config(self.config):
+                if hasattr(self.config, 'save_config'):
+                    self.config.save_config()
+                    logger.info("[QQTools] 配置迁移完成并已保存")
+        except Exception as e:
+            logger.warning(f"[QQTools] 配置迁移失败（将使用默认值）: {e}")
+    
     def __init__(self, context: Context, config: Dict):
         super().__init__(context)
         self.config = config
-        self.tool_config = self.config.get("tools", {})
-        self.general_config = self.config.get("general", {})
-        self.compatibility_config = self.config.get("compatibility", {})
+        
+        # 一次性配置迁移：从旧结构迁移到新结构
+        self._migrate_config_if_needed()
+        
+        self.tool_config = self.config.get("basic_tools", {})
+        self.context_enhance_config = self.config.get("context_enhance", {})
+        self.advanced_config = self.config.get("advanced", {})
         self.reply_adapter_config = self.config.get("reply_adapter", {})
+        self.message_detail_config = self.config.get("message_detail_config", {})
+        self.view_avatar_config = self.config.get("view_avatar_config", {})
+        self.browser_config = self.config.get("browser_config", {})
+        self.gemini_video_config = self.config.get("gemini_video_config", {})
+        
+        # context_enhance 子分组配置
+        self.reply_quote_config = self.context_enhance_config.get("reply_quote", {})
+        self.file_info_config = self.context_enhance_config.get("file_info", {})
+        
+        # advanced 子分组配置
+        self.message_cache_config = self.advanced_config.get("message_cache", {})
+        self.compatibility_config = self.advanced_config.get("compatibility", {})
         
         # 工具名称前缀配置
         self.add_tool_prefix = self.compatibility_config.get("add_tool_prefix", False)
@@ -182,7 +300,7 @@ class QQToolsPlugin(Star):
         # delay_append_msg_id 配置将在 _on_message_internal 中处理
         # 不再尝试修改 handler priority（这种方式不稳定且容易找错 handler）
         
-        self.cache_size = self.general_config.get("cache_size", 50)
+        self.cache_size = self.message_cache_config.get("cache_size", 50)
         
         # 消息缓存: {session_id: deque([message_info])}
         # session_id 通常是 group_id 或 user_id
@@ -194,8 +312,8 @@ class QQToolsPlugin(Star):
         self.cache_last_active: Dict[str, float] = {}
         
         # 缓存清理配置
-        self.cache_inactive_timeout = self.general_config.get("cache_inactive_timeout", 3600)  # 默认 1 小时
-        self.cache_cleanup_interval = self.general_config.get("cache_cleanup_interval", 300)  # 默认 5 分钟
+        self.cache_inactive_timeout = self.message_cache_config.get("cache_inactive_timeout", 3600)  # 默认 1 小时
+        self.cache_cleanup_interval = self.message_cache_config.get("cache_cleanup_interval", 300)  # 默认 5 分钟
         
         # Poke notice 缓存：存储最近的 poke notice 事件，用于 PokeTool 获取戳一戳文案
         # 使用全局缓存而非 session 级别，因为 poke notice 的 session_id 可能与触发工具的 session_id 不同
@@ -217,12 +335,24 @@ class QQToolsPlugin(Star):
         self._manage_tool("kick_user", KickUserTool(self), default=False)
         self._manage_tool("get_member_list", GetGroupMemberListTool())
         self._manage_tool("send_notice", SendGroupNoticeTool(self), default=False)
-        self._manage_tool("view_avatar", ViewAvatarTool(self))
+        self._manage_tool(
+            "view_avatar",
+            ViewAvatarTool(self),
+            default=self.view_avatar_config.get("view_avatar", True)
+        )
         self._manage_tool("set_essence", SetEssenceMessageTool(self))
         self._manage_tool("set_title", SetSpecialTitleTool(self))
-        self._manage_tool("view_video", ViewVideoTool(self), default=False)
+        self._manage_tool(
+            "view_video",
+            ViewVideoTool(self),
+            default=self.gemini_video_config.get("view_video", False)
+        )
         self._manage_tool("repeat", RepeatMessageTool())
-        self._manage_tool("message_detail", GetMessageDetailTool(self))
+        self._manage_tool(
+            "message_detail",
+            GetMessageDetailTool(self),
+            default=self.message_detail_config.get("message_detail", True)
+        )
 
         # 浏览器工具
         self._manage_browser_tools()
@@ -282,7 +412,7 @@ class QQToolsPlugin(Star):
             current_names = original_browser_tool_names
             legacy_names = [f"qts_{name}" for name in original_browser_tool_names]  # 带前缀版本是残余
 
-        if self.tool_config.get("browser", False):
+        if self.browser_config.get("browser", False):
             # =============================================
             # 【可选功能】自动安装浏览器依赖
             #
@@ -294,7 +424,7 @@ class QQToolsPlugin(Star):
             #
             # 如果此功能仍然不符合插件规范，后续版本可能会移除此可选功能。
             # =============================================
-            if self.general_config.get("auto_install_browser_deps", False):
+            if self.browser_config.get("auto_install_browser_deps", False):
                 # 用户显式启用了自动安装，创建异步任务进行依赖安装
                 asyncio.create_task(self._async_install_browser_deps_and_register(
                     legacy_names
@@ -634,11 +764,11 @@ class QQToolsPlugin(Star):
         """【可选功能】异步检查并自动安装浏览器依赖
         
         ⚠️ 重要说明：
-        此方法仅在配置项 "auto_install_browser_deps" 显式设置为 True 时才会被调用。
+        此方法仅在 [`browser_config.auto_install_browser_deps`](astrbot_plugin_qq_tools/_conf_schema.json) 显式设置为 True 时才会被调用。
         该配置项默认值为 False（关闭状态），因此：
           - 默认情况下，此方法永远不会被执行
           - 默认情况下，插件不会运行任何 pip install 或 playwright install 命令
-          - 用户必须主动在插件配置中开启 "自动尝试安装浏览器依赖" 选项才会触发此功能
+          - 用户必须主动在浏览器配置中开启 "自动尝试安装浏览器依赖" 选项才会触发此功能
         
         此功能的设计初衷是为不熟悉命令行的用户提供便利，但如果此实现方式
         仍然不符合 AstrBot 插件规范，后续版本可能会移除此可选功能。
@@ -937,7 +1067,7 @@ class QQToolsPlugin(Star):
             # AstrBot 的 OneBot(V11) 适配器默认只把「文本段」拼进 message_str，
             # 因此被引用消息如果只有图片/文件/卡片等非文本内容，Reply.message_str 会是空，
             # 进而在日志与上下文里只能看到 [引用消息]。
-            if self.general_config.get("enhance_reply_quote", True):
+            if self.reply_quote_config.get("enhance_reply_quote", True):
                 self._enhance_reply_quote(event)
 
             # Check Ban
@@ -964,7 +1094,7 @@ class QQToolsPlugin(Star):
             
             # 2. 提取文件信息并添加到消息中
             file_info_parts = []
-            if self.general_config.get("show_file_info", False):
+            if self.file_info_config.get("show_file_info", False):
                 file_info_parts = self._extract_file_info(event)
             
             # 3. 如果有文件信息，追加到 message_str 和 message chain
@@ -984,7 +1114,7 @@ class QQToolsPlugin(Star):
                         event.message_obj.message.append(Comp.Plain(file_info_str))
             
             # 4. 如果配置启用，提取并注入 B站卡片上下文
-            if self.general_config.get("inject_bilibili_card_context", True):
+            if self.context_enhance_config.get("inject_bilibili_card_context", True):
                 bili_blocks = self._extract_bilibili_card_blocks(event)
                 if bili_blocks:
                     # 去重：检查是否已存在相同的 [BILI_CARD ...] 行
@@ -1009,13 +1139,32 @@ class QQToolsPlugin(Star):
             # - show_message_id: 控制是否在消息中显示 MSG_ID
             # - delay_append_msg_id: 如果启用，不将 MSG_ID 注入到 event（避免污染 LTM），
             #                        但仍在缓存中保留 MSG_ID 供工具使用
-            show_msg_id = self.general_config.get("show_message_id", True)
+            # - skip_msg_id_for_commands: 如果列表非空，检测到指令消息时跳过 MSG_ID 注入
+            show_msg_id = self.context_enhance_config.get("show_message_id", True)
             delay_msg_id = self.compatibility_config.get("delay_append_msg_id", False)
+            
+            # 检测是否是指令消息（如果配置了指令前缀列表）
+            command_prefixes = self.context_enhance_config.get("skip_msg_id_prefixes", [])
+            # 确保是列表类型
+            if not isinstance(command_prefixes, list):
+                command_prefixes = []
+            skip_for_command = False
+            if command_prefixes:
+                # 调试日志：显示实际检查的消息内容
+                logger.debug(f"[QQTools] Checking message for command prefixes: '{event.message_str[:80]}...' (prefixes: {command_prefixes})")
+                skip_for_command = self._is_likely_command(event.message_str, command_prefixes)
+                if skip_for_command:
+                    logger.info(f"[QQTools] Skipping MSG_ID injection for command message (matched one of {command_prefixes})")
+                else:
+                    logger.debug(f"[QQTools] Message does not match any command prefix")
+            
+            # 如果检测到是指令消息，强制使用 delay 模式（不注入到 event，但缓存中仍有）
+            effective_delay = delay_msg_id or skip_for_command
             
             id_suffix = f" [MSG_ID:{message_id}]" if show_msg_id else ""
             
-            # 只有在 show_message_id 启用且 delay_append_msg_id 未启用时，才注入到 event
-            if show_msg_id and not delay_msg_id:
+            # 只有在 show_message_id 启用且 delay_append_msg_id 未启用且非指令消息时，才注入到 event
+            if show_msg_id and not effective_delay:
                 # 防止重复添加
                 if id_suffix not in event.message_str:
                     event.message_str += id_suffix
@@ -1032,9 +1181,10 @@ class QQToolsPlugin(Star):
 
             # 提取消息基本信息
             # 注意：缓存中的 content 始终包含 MSG_ID（如果 show_message_id 启用），
-            # 即使 delay_append_msg_id 启用（不注入到 event），工具仍能从缓存获取 MSG_ID
+            # 即使 delay_append_msg_id 或 skip_msg_id_for_commands 启用（不注入到 event），
+            # 工具仍能从缓存获取 MSG_ID
             cache_content = event.message_str
-            if show_msg_id and delay_msg_id:
+            if show_msg_id and effective_delay:
                 # delay 模式：event 中没有 MSG_ID，但缓存中要有
                 if id_suffix not in cache_content:
                     cache_content += id_suffix
@@ -1058,6 +1208,27 @@ class QQToolsPlugin(Star):
             
         except Exception as e:
             logger.error(f"Error processing message in QQToolsPlugin: {e}")
+
+    def _is_likely_command(self, message_str: str, command_prefixes: list) -> bool:
+        """检测消息是否可能是指令
+        
+        通过检查消息是否以给定的指令前缀开头来判断。
+        
+        Args:
+            message_str: 消息字符串
+            command_prefixes: 指令前缀列表
+            
+        Returns:
+            bool: 如果消息看起来像指令则返回 True
+        """
+        if not message_str or not command_prefixes:
+            return False
+        
+        stripped = message_str.strip()
+        if not stripped:
+            return False
+        
+        return any(stripped.startswith(p) for p in command_prefixes)
 
     def _get_real_message_timestamp(self, event: AstrMessageEvent) -> int:
         """获取消息的真实时间戳
@@ -1216,7 +1387,7 @@ class QQToolsPlugin(Star):
             elif isinstance(comp, Comp.Image):
                 comp_type = 'image'
                 # 图片类型 - 可选，因为图片通常已经有 [Image] 标记
-                if self.general_config.get("show_image_as_file", False):
+                if self.file_info_config.get("show_image_as_file", False):
                     file_name = getattr(comp, 'file_unique', '') or 'image'
                     info_parts.append(f"name={file_name}")
                     info_parts.append("type=image")
@@ -1308,7 +1479,7 @@ class QQToolsPlugin(Star):
         summary = " ".join(p for p in parts if p)
         summary = re.sub(r"\s+", " ", summary).strip()
 
-        max_len = int(self.general_config.get("reply_quote_max_len", 80))
+        max_len = int(self.reply_quote_config.get("reply_quote_max_len", 80))
         if max_len > 0 and len(summary) > max_len:
             summary = summary[: max_len - 1].rstrip() + "…"
         return summary
@@ -1334,9 +1505,9 @@ class QQToolsPlugin(Star):
         if not msgs:
             return
 
-        include_msg_id = bool(self.general_config.get("reply_quote_include_msg_id", True))
-        inject_into_message_str = bool(self.general_config.get("inject_reply_quote_into_message_str", True))
-        enrich_even_if_text = bool(self.general_config.get("reply_quote_enrich_even_if_text", True))
+        include_msg_id = bool(self.reply_quote_config.get("reply_quote_include_msg_id", True))
+        inject_into_message_str = bool(self.reply_quote_config.get("inject_reply_quote_into_message_str", True))
+        enrich_even_if_text = bool(self.reply_quote_config.get("reply_quote_enrich_even_if_text", True))
 
         quote_prefixes: list[str] = []
 
@@ -1621,8 +1792,8 @@ class QQToolsPlugin(Star):
         # 引用回复转换逻辑（只转换，不接管发送）
         # =============================================
         enable_reply_adapter = self.reply_adapter_config.get("enable", False)
-        enable_at_conversion = self.general_config.get("enable_auto_at_conversion", False)
-        msg_filter_patterns = self.general_config.get("message_filter_patterns", [])
+        enable_at_conversion = self.context_enhance_config.get("enable_auto_at_conversion", False)
+        msg_filter_patterns = self.advanced_config.get("message_filter_patterns", [])
 
         # 如果没有任何功能启用，直接返回
         if not enable_reply_adapter and not enable_at_conversion and not msg_filter_patterns:
@@ -1649,6 +1820,12 @@ class QQToolsPlugin(Star):
                 # 格式：[REPLY:message_id]内容
                 # 同一消息内换行使用 \n（字面量）
                 if enable_reply_adapter and has_reply_markers(current_text):
+                    # 先将字面量 \n（LLM 可能输出的转义序列）转换为真实换行，
+                    # 但只转换位于 [REPLY:...] 标签前的字面量 \n，
+                    # 避免误转换消息内容中的 \n。
+                    # 使用正则：匹配 字面量\n 后紧跟 [REPLY: 的模式
+                    current_text = re.sub(r'\\n(?=\[REPLY:)', '\n', current_text)
+                    
                     # 按行处理，每行可能是一个 [REPLY:...] 标签
                     lines = current_text.split('\n')
                     for line in lines:
@@ -1710,9 +1887,43 @@ class QQToolsPlugin(Star):
             else:
                 new_chain.append(component)
         
-        result.chain = new_chain
+        # ========== 多 Reply 拆分发送 ==========
+        # OneBot 协议中，一条消息只能包含一个 reply 段。
+        # 当 LLM 输出包含多个 [REPLY:message_id] 时，new_chain 中会有多个 Reply 组件，
+        # 如果作为一条消息发送，协议端只会识别第一个 Reply，后续的会丢失或格式错乱。
+        # 因此需要按 Reply 组件拆分成多组，前 N-1 组直接发送，最后一组留给 AstrBot 正常流程。
+        reply_count = sum(1 for c in new_chain if isinstance(c, Comp.Reply))
 
-        if not new_chain:
+        if reply_count > 1:
+            # 将 chain 按 Reply 组件拆分成多组
+            groups = []
+            current_group = []
+
+            for comp in new_chain:
+                if isinstance(comp, Comp.Reply) and current_group:
+                    # 遇到新的 Reply，将之前的组保存
+                    groups.append(current_group)
+                    current_group = [comp]
+                else:
+                    current_group.append(comp)
+
+            if current_group:
+                groups.append(current_group)
+
+            # 前 N-1 组直接发送
+            from astrbot.core.message.message_event_result import MessageChain
+            for group in groups[:-1]:
+                try:
+                    await event.send(MessageChain(chain=group))
+                except Exception as e:
+                    logger.error(f"Failed to send split reply message: {e}")
+
+            # 最后一组留给 AstrBot 正常流程发送
+            result.chain = groups[-1]
+        else:
+            result.chain = new_chain
+
+        if not result.chain:
             event.stop_event()
             logger.debug("Message chain is empty after filtering. Event stopped.")
 
@@ -1766,7 +1977,7 @@ class QQToolsPlugin(Star):
         """
         try:
             # 检查是否启用了缓存 BOT 消息功能
-            if not self.general_config.get("cache_bot_messages", True):
+            if not self.message_cache_config.get("cache_bot_messages", True):
                 return
             
             # 仅针对 QQ 平台 (Aiocqhttp)
@@ -1800,7 +2011,7 @@ class QQToolsPlugin(Star):
         self_id = str(event.get_self_id())
         
         try:
-            api_history_count = self.general_config.get("api_history_count", 10)
+            api_history_count = self.message_cache_config.get("api_history_count", 10)
             
             if event.get_group_id():
                 # 群聊：获取群历史消息
@@ -1876,7 +2087,7 @@ class QQToolsPlugin(Star):
         message_id = str(msg.get('message_id', ''))
         
         # 添加 MSG_ID 标记
-        if self.general_config.get("show_message_id", True):
+        if self.context_enhance_config.get("show_message_id", True):
             content += f" [MSG_ID:{message_id}]"
         
         return {

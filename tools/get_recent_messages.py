@@ -10,7 +10,7 @@ class GetRecentMessagesTool(FunctionTool):
     def __init__(self, plugin):
         show_message_id = True
         if plugin:
-            show_message_id = plugin.general_config.get("show_message_id", True)
+            show_message_id = plugin.context_enhance_config.get("show_message_id", True)
 
         desc = "搜索当前会话的历史消息记录。当需要查找上下文之外的消息（如之前的对话、特定关键词、特定发送者）以获取 message_id 或回顾内容时使用。"
         if not show_message_id:

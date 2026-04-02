@@ -9,7 +9,7 @@ class SetEssenceMessageTool(FunctionTool):
     def __init__(self, plugin=None):
         show_message_id = True
         if plugin:
-            show_message_id = plugin.general_config.get("show_message_id", True)
+            show_message_id = plugin.context_enhance_config.get("show_message_id", True)
 
         desc_message_id = "要设为精华的消息ID。多个ID用逗号分隔，例如 '123,456'。可以直接从用户消息的 [MSG_ID:xxx] 中获取 xxx。"
         if not show_message_id:
