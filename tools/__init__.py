@@ -26,7 +26,9 @@ from .get_message_detail import GetMessageDetailTool
 from .browser import (
     BrowserOpenTool,
     BrowserClickTool,
-    BrowserClickCoordinateTool,
+    BrowserGridOverlayTool,
+    BrowserClickRelativeTool,
+    BrowserClickInElementTool,
     BrowserInputTool,
     BrowserScrollTool,
     BrowserGetLinkTool,
@@ -36,7 +38,6 @@ from .browser import (
     BrowserCloseTool,
     BrowserWaitTool,
     BrowserSendImageTool,
-    BrowserClickInElementTool,
     BrowserCropTool,
 )
 
@@ -50,7 +51,6 @@ __all__ = [
     "StopConversationTool",
     "RepeatMessageTool",
     "ViewAvatarTool",
-
     # 群管理工具
     "ChangeGroupCardTool",
     "BanUserTool",
@@ -61,21 +61,18 @@ __all__ = [
     "GetGroupMemberListTool",
     "SendGroupNoticeTool",
     "SetEssenceMessageTool",
-
     # 定时唤醒工具
     "WakeScheduleTool",
     "WakeManageTool",
-
     # 消息详情工具
     "GetMessageDetailTool",
-
     # 视频工具
     "ViewVideoTool",
-
     # 浏览器工具
     "BrowserOpenTool",
     "BrowserClickTool",
-    "BrowserClickCoordinateTool",
+    "BrowserGridOverlayTool",
+    "BrowserClickRelativeTool",
     "BrowserInputTool",
     "BrowserScrollTool",
     "BrowserGetLinkTool",
