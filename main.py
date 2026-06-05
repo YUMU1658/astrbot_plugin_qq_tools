@@ -542,7 +542,7 @@ class QQToolsPlugin(Star):
         if self.tool_config.get("wake_scheduler", True):
             # 初始化唤醒调度器
             # 使用官方 API 获取插件专属数据目录
-            data_dir = str(StarTools.get_data_dir())
+            data_dir = str(StarTools.get_data_dir("astrbot_plugin_qq_tools"))
             
             self.wake_scheduler = WakeScheduler(self.context, data_dir)
             self.wake_scheduler.set_wake_callback(self._wake_callback)
