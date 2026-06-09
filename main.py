@@ -1184,6 +1184,12 @@ class QQToolsPlugin(Star):
             # 即使 delay_append_msg_id 或 skip_msg_id_for_commands 启用（不注入到 event），
             # 工具仍能从缓存获取 MSG_ID
             cache_content = event.message_str
+            media_summary = self._extract_event_media_summary(event)
+            if media_summary:
+                if not cache_content.strip():
+                    cache_content = media_summary
+                elif media_summary not in cache_content:
+                    cache_content = f"{cache_content} {media_summary}"
             if show_msg_id and effective_delay:
                 # delay 模式：event 中没有 MSG_ID，但缓存中要有
                 if id_suffix not in cache_content:
@@ -1229,6 +1235,83 @@ class QQToolsPlugin(Star):
             return False
         
         return any(stripped.startswith(p) for p in command_prefixes)
+
+    def _extract_event_media_summary(self, event: AstrMessageEvent) -> str:
+        """Build compact, searchable media markers for the message cache."""
+        raw_message = getattr(event.message_obj, 'raw_message', None)
+        raw_segments = []
+        if raw_message and hasattr(raw_message, 'message') and isinstance(raw_message.message, list):
+            raw_segments = raw_message.message
+        elif isinstance(raw_message, dict) and isinstance(raw_message.get('message'), list):
+            raw_segments = raw_message.get('message', [])
+
+        markers = self._extract_media_markers_from_segments(raw_segments)
+        if not markers:
+            messages = event.get_messages() if hasattr(event, 'get_messages') else []
+            if not messages and hasattr(event.message_obj, 'message'):
+                messages = event.message_obj.message
+            markers = self._extract_media_markers_from_components(messages)
+
+        return " ".join(dict.fromkeys(markers))
+
+    def _extract_media_markers_from_components(self, messages: list) -> List[str]:
+        markers: List[str] = []
+        for comp in messages or []:
+            if isinstance(comp, Comp.Image):
+                markers.append("[Image]")
+            elif hasattr(Comp, "Video") and isinstance(comp, Comp.Video):
+                markers.append("[Video]")
+            elif hasattr(Comp, "Record") and isinstance(comp, Comp.Record):
+                markers.append("[Audio]")
+            elif hasattr(Comp, "File") and isinstance(comp, Comp.File):
+                name = getattr(comp, 'name', '') or getattr(comp, 'file', '') or 'file'
+                markers.append(f"[File:{self._short_media_value(name, 48) or 'file'}]")
+            elif isinstance(comp, Comp.Reply):
+                markers.append(f"[Reply:{getattr(comp, 'id', '')}]")
+                if getattr(comp, 'chain', None):
+                    for marker in self._extract_media_markers_from_components(comp.chain):
+                        markers.append(f"[Quoted{marker.strip('[]')}]")
+        return markers
+
+    def _extract_media_markers_from_segments(self, segments: list) -> List[str]:
+        markers: List[str] = []
+        for seg in segments or []:
+            if not isinstance(seg, dict):
+                continue
+            seg_type = seg.get('type', '')
+            data = seg.get('data', {}) if isinstance(seg.get('data', {}), dict) else {}
+            if seg_type == 'image':
+                ident = self._short_media_value(data.get('file_id') or data.get('file_unique') or data.get('file'), 32)
+                size = self._short_media_value(data.get('file_size'), 24)
+                extra = []
+                if ident:
+                    extra.append(f"id={ident}")
+                if size:
+                    extra.append(f"size={size}")
+                markers.append(f"[Image {' '.join(extra)}]" if extra else "[Image]")
+            elif seg_type == 'video':
+                markers.append("[Video]")
+            elif seg_type == 'record':
+                markers.append("[Audio]")
+            elif seg_type == 'file':
+                name = self._short_media_value(data.get('name') or data.get('file'), 48) or 'file'
+                markers.append(f"[File:{name}]")
+            elif seg_type == 'reply':
+                markers.append(f"[Reply:{data.get('id', '')}]")
+        return markers
+
+    def _short_media_value(self, value: object, max_len: int) -> str:
+        if value is None:
+            return ""
+        text = str(value).strip()
+        if not text:
+            return ""
+        lowered = text[:64].lower()
+        if lowered.startswith(("data:", "base64", "http://", "https://")):
+            return ""
+        if len(text) > 256 and re.fullmatch(r"[A-Za-z0-9+/=]+", text):
+            return ""
+        return re.sub(r"\s+", "_", text)[:max_len]
 
     def _get_real_message_timestamp(self, event: AstrMessageEvent) -> int:
         """获取消息的真实时间戳
@@ -2114,20 +2197,28 @@ class QQToolsPlugin(Star):
             if seg_type == 'text':
                 parts.append(data.get('text', ''))
             elif seg_type == 'image':
-                parts.append('[图片]')
+                ident = self._short_media_value(data.get('file_id') or data.get('file_unique') or data.get('file'), 32)
+                size = self._short_media_value(data.get('file_size'), 24)
+                extra = []
+                if ident:
+                    extra.append(f"id={ident}")
+                if size:
+                    extra.append(f"size={size}")
+                parts.append(f"[Image {' '.join(extra)}]" if extra else "[Image]")
             elif seg_type == 'at':
                 qq = data.get('qq', '')
                 parts.append(f'@{qq}')
             elif seg_type == 'face':
-                parts.append('[表情]')
+                parts.append('[Face]')
             elif seg_type == 'record':
-                parts.append('[语音]')
+                parts.append('[Audio]')
             elif seg_type == 'video':
-                parts.append('[视频]')
+                parts.append('[Video]')
             elif seg_type == 'file':
-                parts.append(f"[文件:{data.get('name', 'file')}]")
+                name = self._short_media_value(data.get('name') or data.get('file'), 48) or 'file'
+                parts.append(f"[File:{name}]")
             elif seg_type == 'reply':
-                parts.append(f"[回复:{data.get('id', '')}]")
+                parts.append(f"[Reply:{data.get('id', '')}]")
             else:
                 parts.append(f'[{seg_type}]')
         
