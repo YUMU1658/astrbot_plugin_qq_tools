@@ -1,19 +1,16 @@
-import os
 import json
 import base64
 import asyncio
 import aiohttp
-import uuid
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, Any, Tuple
 from astrbot.api import logger
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import AiocqhttpMessageEvent
 from astrbot.core.agent.tool import FunctionTool, ToolExecResult
 from astrbot.core.agent.run_context import ContextWrapper
 from astrbot.core.astr_agent_context import AstrAgentContext
 from astrbot.core.agent.message import ImageURLPart
-from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from ..utils import call_onebot
 
 # Gemini 支持的图片格式
@@ -372,9 +369,8 @@ class GetMessageDetailTool(FunctionTool):
             
             # 检查是否需要转换
             if content_type in SUPPORTED_IMAGE_FORMATS:
-                # 格式已支持，直接编码为 base64（轻量操作，无需线程池）
-                base64_data = base64.b64encode(image_data).decode('utf-8')
-                return f"data:{content_type};base64,{base64_data}", None
+                # 模型已支持的格式直接保留原始 URL，避免把图片转成巨大的 data URL 注入上下文。
+                return url, None
             
             elif content_type in CONVERT_IMAGE_FORMATS or content_type.startswith('image/'):
                 # 需要转换格式 - 使用线程池避免阻塞事件循环
