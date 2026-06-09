@@ -128,7 +128,7 @@
         "type": "bool",
         "description": "自动注入图片到 LLM 视觉上下文",
         "hint": "启用后，get_message_detail 工具默认会将消息中的图片注入到 LLM 视觉上下文中，让模型能「看到」图片。LLM 调用时可通过 inject_images 参数覆盖此设置。",
-        "default": false,
+        "default": true,
         "condition": {
           "message_detail": true
         }
@@ -703,7 +703,7 @@
           "api_history_count": {
             "description": "每次获取历史消息的条数",
             "type": "int",
-            "default": 10,
+            "default": 50,
             "condition": {
               "cache_bot_messages": true
             }
@@ -711,7 +711,7 @@
           "cache_size": {
             "description": "每个会话的缓存上限（条）",
             "type": "int",
-            "default": 50,
+            "default": 300,
             "condition": {
               "cache_bot_messages": true
             }
@@ -720,7 +720,7 @@
             "description": "会话缓存过期时间（秒）",
             "hint": "超过此时间没有新消息的会话缓存将被自动清理，释放内存。设置为 0 表示禁用自动清理。",
             "type": "int",
-            "default": 3600,
+            "default": 86400,
             "condition": {
               "cache_bot_messages": true
             }
