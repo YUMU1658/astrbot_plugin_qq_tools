@@ -1,3 +1,6 @@
+
+</think>
+
 # astrbot_plugin_qq_tools
 
 > 为 **AstrBot** 提供 QQ 平台（OneBot / aiocqhttp）特定的工具集：**引用回复适配器**、撤回消息、检索最近消息、群管理、头像查看、网页浏览（Playwright）、视频分析（Gemini）、以及「定时唤醒」等能力。
@@ -94,6 +97,7 @@
    # 若启用网页浏览，还需要安装 Chromium
    playwright install chromium
    ```
+   > 💡 提示：若配置 `browser_config.auto_install_browser_deps=true`，插件启动时会自动尝试安装 Playwright 及 Chromium 依赖。
 3. 重启 AstrBot，在插件管理中启用本插件
 
 ### 方法 B：以源码形式管理
